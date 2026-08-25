@@ -8,7 +8,7 @@ import {
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff,
+  todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete } from "./ui";
 
@@ -497,8 +497,10 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
 function KupacForm({ initial, currentUser, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
-      naziv_firme: "", grad: "", drzava: "", serijski_broj: "", broj_licenci: "",
-      naziv_proizvoda: "", start_date: "", end_date: "", napomena: "",
+      naziv_firme: "", grad: "", drzava: "", adresa: "", postanski_broj: "",
+      serijski_broj: "", broj_licenci: "",
+      naziv_proizvoda: "", naziv_proizvoda_2: "", revenue_type: "", izvorni_status: "",
+      start_date: "", end_date: "", napomena: "",
     }
   );
   const [busy, setBusy] = useState(false);
@@ -529,12 +531,17 @@ function KupacForm({ initial, currentUser, onSave, onClose }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Naziv firme" required><input className={inputCls} value={f.naziv_firme} onChange={set("naziv_firme")} /></Field>
         <Field label="Naziv proizvoda" hint="npr. SolidWorks Standard"><input className={inputCls} value={f.naziv_proizvoda || ""} onChange={set("naziv_proizvoda")} /></Field>
+        <Field label="Naziv proizvoda 2" hint="ako firma ima i drugi proizvod/paket"><input className={inputCls} value={f.naziv_proizvoda_2 || ""} onChange={set("naziv_proizvoda_2")} /></Field>
         <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
         <Field label="Država"><input className={inputCls} value={f.drzava || ""} onChange={set("drzava")} /></Field>
+        <Field label="Adresa"><input className={inputCls} value={f.adresa || ""} onChange={set("adresa")} /></Field>
+        <Field label="Poštanski broj"><input className={inputCls} value={f.postanski_broj || ""} onChange={set("postanski_broj")} /></Field>
         <Field label="Serijski broj licence"><input className={inputCls} value={f.serijski_broj || ""} onChange={set("serijski_broj")} /></Field>
         <Field label="Broj licenci"><input type="number" min="0" className={inputCls} value={f.broj_licenci ?? ""} onChange={set("broj_licenci")} /></Field>
+        <Field label="Revenue Type"><input className={inputCls} value={f.revenue_type || ""} onChange={set("revenue_type")} /></Field>
+        <Field label="Status (izvorni, iz tabele)"><input className={inputCls} value={f.izvorni_status || ""} onChange={set("izvorni_status")} /></Field>
         <Field label="Start subscription date"><input type="date" className={inputCls} value={f.start_date || ""} onChange={set("start_date")} /></Field>
-        <Field label="End subscription date"><input type="date" className={inputCls} value={f.end_date || ""} onChange={set("end_date")} /></Field>
+        <Field label="End subscription date (Support End Date)"><input type="date" className={inputCls} value={f.end_date || ""} onChange={set("end_date")} /></Field>
       </div>
       <Field label="Napomena"><textarea className={inputCls} rows={3} value={f.napomena || ""} onChange={set("napomena")} /></Field>
       <div className="flex justify-end gap-2 mt-2">
@@ -592,6 +599,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                 <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                   <th className="px-4 py-2.5">Firma</th>
                   <th className="px-4 py-2.5">Grad / Država</th>
+                  <th className="px-4 py-2.5">Adresa</th>
                   <th className="px-4 py-2.5">Proizvod</th>
                   <th className="px-4 py-2.5">Serijski broj</th>
                   <th className="px-4 py-2.5 text-center">Broj licenci</th>
@@ -611,7 +619,11 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                         <div className="text-xs text-slate-400 font-normal"><MetaLine record={k} /></div>
                       </td>
                       <td className="px-4 py-2.5 text-slate-600">{[k.grad, k.drzava].filter(Boolean).join(", ") || "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{k.naziv_proizvoda || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600">
+                        {k.naziv_proizvoda || "—"}
+                        {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400">{k.naziv_proizvoda_2}</div>}
+                      </td>
                       <td className="px-4 py-2.5 text-slate-500 font-mono text-xs">{k.serijski_broj || "—"}</td>
                       <td className="px-4 py-2.5 text-center text-slate-600">{k.broj_licenci ?? "—"}</td>
                       <td className="px-4 py-2.5 text-slate-500">{fmtDate(k.start_date)}</td>
@@ -639,15 +651,29 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
 
       {showImport && (
         <ImportModal
-          title="Uvezi / ažuriraj kupce"
-          columns={["Naziv firme", "Grad", "Država", "Serijski broj", "Broj licenci", "Naziv proizvoda", "Start datum (GGGG-MM-DD)", "End datum (GGGG-MM-DD)", "Napomena"]}
+          title="Uvezi / ažuriraj kupce (mjesečni export)"
+          columns={[
+            "Final customer name", "Serial number", "Product name", "Product name 2",
+            "License Qty", "Revenue Type", "Status", "Start Date", "Support End Date",
+            "City", "Address", "Postal Code", "Country",
+          ]}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
             const parsed = rows.map((r) => ({
-              naziv_firme: r[0] || "", grad: r[1] || "", drzava: r[2] || "",
-              serijski_broj: r[3] || "", broj_licenci: r[4] ? Number(r[4]) : null,
-              naziv_proizvoda: r[5] || "", start_date: r[6] || null, end_date: r[7] || null,
-              napomena: r[8] || "",
+              naziv_firme: r[0] || "",
+              serijski_broj: r[1] || "",
+              naziv_proizvoda: r[2] || "",
+              naziv_proizvoda_2: r[3] || "",
+              broj_licenci: r[4] ? Number(String(r[4]).replace(",", ".")) : null,
+              revenue_type: r[5] || "",
+              izvorni_status: r[6] || "",
+              start_date: parseDateFlexible(r[7]),
+              end_date: parseDateFlexible(r[8]),
+              grad: r[9] || "",
+              adresa: r[10] || "",
+              postanski_broj: r[11] || "",
+              drzava: r[12] || "",
+              napomena: "",
             }));
             await onBulkImportKupci(parsed);
           }}
