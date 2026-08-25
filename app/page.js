@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
-  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, bulkInsert, todayStr,
+  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, todayStr,
 } from "../lib/crm";
 import {
   PregledTab, PotencijaliTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
@@ -142,6 +142,10 @@ export default function HomePage() {
   const deleteKupac = async (id) => {
     await deleteRow("kupci", id);
     setKupci((prev) => prev.filter((k) => k.id !== id));
+  };
+  const deleteAllKupci = async () => {
+    await deleteAllRows("kupci");
+    setKupci([]);
   };
   // Svaki red iz fajla je UVIJEK poseban zapis (bez spajanja/upsert-a po serijskom broju).
   // Napomena: ako se isti fajl uveze ponovo (npr. mjesečno), stariji zapisi ostaju —
@@ -306,6 +310,7 @@ export default function HomePage() {
               onUpdate={updateKupac}
               onDelete={deleteKupac}
               onBulkImportKupci={bulkImportKupci}
+              onDeleteAll={deleteAllKupci}
             />
           )}
           {tab === "podrska" && (
