@@ -11,18 +11,18 @@ export function Modal({ title, onClose, children, wide }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-900/50 p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
       <div
-        className={(wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white rounded-2xl shadow-2xl my-6"}
+        className={(wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white rounded-2xl shadow-2xl max-h-[85vh] flex flex-col"}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
           <h3 className="text-base font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className={btnGhostIcon}>
             <X size={18} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
@@ -108,7 +108,7 @@ export function ImportModal({ title, columns, onClose, onImport }) {
   const rows = useMemo(() => {
     if (mode === "paste") return pastedRows;
     const base = skipHeader ? fileRows.slice(1) : fileRows;
-    return base.filter((r) => r.some((c) => String(c).trim() !== ""));
+    return base.filter((r) => r[0] && String(r[0]).trim() !== "");
   }, [mode, pastedRows, fileRows, skipHeader]);
 
   const handleFile = async (e) => {
@@ -123,7 +123,7 @@ export function ImportModal({ title, columns, onClose, onImport }) {
       const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
       const asRows = aoa
         .map((r) => r.map((c) => (c == null ? "" : String(c).trim())))
-        .filter((r) => r.some((c) => c !== ""));
+        .filter((r) => r[0] && r[0] !== "");
       setFileRows(asRows);
       if (wb.SheetNames.length > 1) {
         setFileError(`Napomena: fajl ima ${wb.SheetNames.length} listova (sheets) — učitan je samo prvi ("${wb.SheetNames[0]}").`);
@@ -186,6 +186,11 @@ export function ImportModal({ title, columns, onClose, onImport }) {
       )}
 
       <p className="text-xs text-slate-400 mt-2">Prepoznato redova za uvoz: {rows.length}</p>
+      {rows.length > 2000 && (
+        <p className="text-xs text-amber-600 mt-1">
+          Ovo je neuobičajeno velik broj — provjerite da fajl stvarno ima toliko kupaca prije uvoza (moguće je da Excel čita prazne formatirane redove).
+        </p>
+      )}
       <div className="flex justify-end gap-2 mt-5">
         <button className={btnSecondary} onClick={onClose}>
           Otkaži
