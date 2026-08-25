@@ -215,6 +215,40 @@ export function ImportModal({ title, columns, onClose, onImport }) {
   );
 }
 
+export function DangerConfirmModal({ title, message, confirmWord = "OBRIŠI", confirmLabel = "Obriši sve", onClose, onConfirm }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title={title} onClose={onClose}>
+      <p className="text-sm text-slate-600 mb-4">{message}</p>
+      <p className="text-sm text-slate-600 mb-2">
+        Da potvrdite, upišite <span className="font-mono font-semibold text-red-600">{confirmWord}</span> u polje ispod:
+      </p>
+      <input className={inputCls} value={text} onChange={(e) => setText(e.target.value)} placeholder={confirmWord} autoFocus />
+      <div className="flex justify-end gap-2 mt-5">
+        <button className={btnSecondary} onClick={onClose}>
+          Otkaži
+        </button>
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={text !== confirmWord || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onConfirm();
+              onClose();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Brišem..." : confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export function ConfirmDelete({ label, onConfirm }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
