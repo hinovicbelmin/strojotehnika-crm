@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, AlertCircle } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
-import { inputCls, btnPrimary } from "../../lib/crm";
+import { inputCls } from "../../lib/crm";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +27,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-50 px-4 py-10 overflow-y-auto">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
         <div className="text-center mb-6">
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Firma CRM</h1>
@@ -39,6 +39,7 @@ export default function LoginPage() {
             <input
               type="email"
               required
+              autoComplete="username"
               className={inputCls}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -50,6 +51,7 @@ export default function LoginPage() {
             <input
               type="password"
               required
+              autoComplete="current-password"
               className={inputCls}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -62,7 +64,11 @@ export default function LoginPage() {
               <span>{error}</span>
             </div>
           )}
-          <button type="submit" className={btnPrimary + " w-full justify-center"} disabled={busy}>
+          <button
+            type="submit"
+            disabled={busy}
+            className="relative z-10 mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 active:bg-teal-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <LogIn size={16} /> {busy ? "Prijavljivanje..." : "Prijavi se"}
           </button>
         </form>
