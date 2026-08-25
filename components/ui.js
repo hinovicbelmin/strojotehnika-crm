@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { X, Search, Upload, Trash2 } from "lucide-react";
+import { X, Search, Upload, Trash2, FileSpreadsheet, ClipboardPaste } from "lucide-react";
+import * as XLSX from "xlsx";
 import { btnGhostIcon, btnPrimary, btnSecondary, inputCls, fmtDate } from "../lib/crm";
 
 export function Modal({ title, onClose, children, wide }) {
@@ -88,35 +89,103 @@ export function MetaLine({ record }) {
 }
 
 export function ImportModal({ title, columns, onClose, onImport }) {
+  const [mode, setMode] = useState("file"); // "file" | "paste"
   const [text, setText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [fileRows, setFileRows] = useState([]);
+  const [skipHeader, setSkipHeader] = useState(true);
+  const [fileError, setFileError] = useState("");
   const [busy, setBusy] = useState(false);
-  const rows = useMemo(() => {
+
+  const pastedRows = useMemo(() => {
     return text
       .split("\n")
       .map((r) => r.replace(/\r$/, ""))
       .filter((r) => r.trim().length > 0)
       .map((r) => (r.includes("\t") ? r.split("\t") : r.split(",")).map((c) => c.trim()));
   }, [text]);
+
+  const rows = useMemo(() => {
+    if (mode === "paste") return pastedRows;
+    const base = skipHeader ? fileRows.slice(1) : fileRows;
+    return base.filter((r) => r.some((c) => String(c).trim() !== ""));
+  }, [mode, pastedRows, fileRows, skipHeader]);
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileError("");
+    setFileName(file.name);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+      const asRows = aoa
+        .map((r) => r.map((c) => (c == null ? "" : String(c).trim())))
+        .filter((r) => r.some((c) => c !== ""));
+      setFileRows(asRows);
+      if (wb.SheetNames.length > 1) {
+        setFileError(`Napomena: fajl ima ${wb.SheetNames.length} listova (sheets) — učitan je samo prvi ("${wb.SheetNames[0]}").`);
+      }
+    } catch (err) {
+      console.error(err);
+      setFileError("Nije uspjelo čitanje fajla. Provjerite da je u pitanju .xlsx, .xls ili .csv fajl.");
+      setFileRows([]);
+    }
+  };
+
   return (
     <Modal title={title} onClose={onClose} wide>
-      <p className="text-sm text-slate-500 mb-3">
-        Zalijepi redove iz Excela (kolone razdvojene TAB-om ili zarezom), tim redoslijedom:
-      </p>
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="flex gap-2 mb-4 border-b border-slate-200">
+        <button
+          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px " + (mode === "file" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700")}
+          onClick={() => setMode("file")}
+        >
+          <FileSpreadsheet size={15} /> Uvezi fajl
+        </button>
+        <button
+          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px " + (mode === "paste" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700")}
+          onClick={() => setMode("paste")}
+        >
+          <ClipboardPaste size={15} /> Zalijepi iz Excela
+        </button>
+      </div>
+
+      <p className="text-sm text-slate-500 mb-3">Kolone trebaju biti tim redoslijedom:</p>
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {columns.map((c, i) => (
           <span key={i} className="text-xs bg-slate-100 text-slate-600 rounded px-2 py-0.5">
             {i + 1}. {c}
           </span>
         ))}
       </div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={10}
-        placeholder="Zalijepi podatke ovdje..."
-        className={inputCls + " font-mono text-xs"}
-      />
-      <p className="text-xs text-slate-400 mt-2">Prepoznato redova: {rows.length}</p>
+
+      {mode === "file" ? (
+        <div>
+          <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl py-8 px-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors">
+            <FileSpreadsheet size={24} className="text-slate-400" />
+            <span className="text-sm text-slate-600 font-medium">{fileName || "Kliknite da odaberete .xlsx / .xls / .csv fajl"}</span>
+            <span className="text-xs text-slate-400">ili prevucite fajl ovdje</span>
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+          </label>
+          {fileError && <p className="text-xs text-amber-600 mt-2">{fileError}</p>}
+          <label className="flex items-center gap-2 mt-3 text-sm text-slate-600">
+            <input type="checkbox" checked={skipHeader} onChange={(e) => setSkipHeader(e.target.checked)} />
+            Prvi red u fajlu je zaglavlje (nazivi kolona) — preskoči ga
+          </label>
+        </div>
+      ) : (
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={10}
+          placeholder="Zalijepi podatke ovdje (kolone razdvojene TAB-om ili zarezom)..."
+          className={inputCls + " font-mono text-xs"}
+        />
+      )}
+
+      <p className="text-xs text-slate-400 mt-2">Prepoznato redova za uvoz: {rows.length}</p>
       <div className="flex justify-end gap-2 mt-5">
         <button className={btnSecondary} onClick={onClose}>
           Otkaži
