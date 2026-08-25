@@ -3,14 +3,14 @@ import { useState, useMemo } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
-  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown,
+  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete } from "./ui";
+import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal } from "./ui";
 
 /* ====================================================================== */
 /*  PREGLED                                                                */
@@ -602,12 +602,13 @@ function Pagination({ page, setPage, pageSize, setPageSize, total }) {
   );
 }
 
-export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci }) {
+export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll }) {
   const [q, setQ] = useState("");
   const [fLicenca, setFLicenca] = useState("Sve");
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [sortField, setSortField] = useState("naziv_firme");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
@@ -664,6 +665,13 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
           <option>Sve</option><option>Aktivno</option><option>Ističe uskoro</option><option>Isteklo</option>
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi / mjesečno ažuriranje</button>
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+          onClick={() => setShowDeleteAll(true)}
+          disabled={data.length === 0}
+        >
+          <Trash2 size={15} /> Obriši sve kupce
+        </button>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj kupca</button>
       </Toolbar>
 
@@ -757,6 +765,17 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
             }));
             await onBulkImportKupci(parsed);
           }}
+        />
+      )}
+
+      {showDeleteAll && (
+        <DangerConfirmModal
+          title="Obriši sve kupce"
+          message={`Ovo će trajno obrisati svih ${data.length} zapisa iz sekcije Kupci i licence. Ova akcija se ne može poništiti.`}
+          confirmWord="OBRIŠI"
+          confirmLabel="Obriši sve kupce"
+          onClose={() => setShowDeleteAll(false)}
+          onConfirm={onDeleteAll}
         />
       )}
     </div>
