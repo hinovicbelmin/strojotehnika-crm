@@ -144,24 +144,64 @@ export default function HomePage() {
     setKupci((prev) => prev.filter((k) => k.id !== id));
   };
   // Uvoz sa upsert logikom: ako postoji zapis sa istim serijskim brojem + proizvodom, ažurira ga; inače dodaje novi
-  const bulkImportKupci = async (rows) => {
-    let current = [...kupci];
-    for (const row of rows) {
-      const idx = current.findIndex(
-        (k) => row.serijski_broj && k.serijski_broj === row.serijski_broj && k.naziv_proizvoda === row.naziv_proizvoda
-      );
+  // Optimizovano za velike količine (hiljade redova): brzo pretraživanje (Map) + grupni upisi umjesto pojedinačnih zahtjeva
+  const bulkImportKupci = async (rows, onProgress) => {
+    const existingMap = new Map();
+    kupci.forEach((k) => {
+      if (k.serijski_broj && k.naziv_proizvoda) existingMap.set(`${k.serijski_broj}::${k.naziv_proizvoda}`, k);
+    });
+
+    const toInsert = [];
+    const toUpdate = []; // { id, payload }
+    const seenInBatch = new Set();
+
+    rows.forEach((row) => {
+      const key = row.serijski_broj && row.naziv_proizvoda ? `${row.serijski_broj}::${row.naziv_proizvoda}` : null;
       const payload = { ...row, updated_by: currentUser || "Uvoz", updated_at: new Date().toISOString() };
-      if (idx >= 0) {
-        const rec = await updateRow("kupci", current[idx].id, payload);
-        current[idx] = rec;
+      const existing = key ? existingMap.get(key) : null;
+      if (existing) {
+        toUpdate.push({ id: existing.id, payload });
+      } else if (key && seenInBatch.has(key)) {
+        // Duplikat unutar istog fajla (isti serijski broj + proizvod dva puta) — tretiraj kao update na prethodno dodani red
+        toUpdate.push({ id: null, payload, __dupKey: key });
       } else {
-        const rec = await insertRow("kupci", {
-          ...payload, created_by: currentUser || "Uvoz", created_at: new Date().toISOString(),
-        });
-        current = [rec, ...current];
+        if (key) seenInBatch.add(key);
+        toInsert.push({ ...payload, created_by: currentUser || "Uvoz", created_at: new Date().toISOString(), __key: key });
       }
+    });
+
+    const insertedAll = [];
+    const CHUNK = 500;
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const chunk = toInsert.slice(i, i + CHUNK).map(({ __key, ...rest }) => rest);
+      const inserted = await bulkInsert("kupci", chunk);
+      insertedAll.push(...inserted);
+      if (onProgress) onProgress(Math.min(i + CHUNK, toInsert.length), toInsert.length + toUpdate.length);
     }
-    setKupci(current);
+
+    // Popuni id-eve za "duplikate unutar fajla" na osnovu upravo ubačenih redova (po redoslijedu)
+    const insertedByKey = new Map();
+    toInsert.forEach((t, idx) => {
+      if (t.__key) insertedByKey.set(t.__key, insertedAll[idx]);
+    });
+
+    const updatedAll = [];
+    const UPDATE_CONCURRENCY = 15;
+    const realUpdates = toUpdate
+      .map((u) => (u.id ? u : { ...u, id: insertedByKey.get(u.__dupKey)?.id }))
+      .filter((u) => u.id);
+    for (let i = 0; i < realUpdates.length; i += UPDATE_CONCURRENCY) {
+      const batch = realUpdates.slice(i, i + UPDATE_CONCURRENCY);
+      const results = await Promise.all(batch.map((u) => updateRow("kupci", u.id, u.payload)));
+      updatedAll.push(...results);
+      if (onProgress) onProgress(toInsert.length + Math.min(i + UPDATE_CONCURRENCY, realUpdates.length), toInsert.length + toUpdate.length);
+    }
+
+    setKupci((prev) => {
+      const updatedIds = new Set(updatedAll.map((u) => u.id));
+      const withoutUpdated = prev.filter((k) => !updatedIds.has(k.id));
+      return [...insertedAll, ...updatedAll, ...withoutUpdated];
+    });
   };
 
   /* ---------------- Podrška handlers ---------------- */
