@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
-  CheckCircle2, ChevronRight, Upload,
+  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE,
@@ -554,23 +554,102 @@ function KupacForm({ initial, currentUser, onSave, onClose }) {
   );
 }
 
+function SortableHeader({ label, field, sortField, sortDir, onSort, align }) {
+  const active = sortField === field;
+  return (
+    <th
+      className={"px-4 py-2.5 cursor-pointer select-none hover:text-slate-800 " + (align === "center" ? "text-center" : "")}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (sortDir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300" />}
+      </span>
+    </th>
+  );
+}
+
+function Pagination({ page, setPage, pageSize, setPageSize, total }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+  const to = Math.min(clampedPage * pageSize, total);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span>Prikaz po strani:</span>
+        <select
+          className="text-sm rounded-lg border border-slate-300 px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+        >
+          {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-3 text-sm text-slate-500">
+        <span>{total === 0 ? "0 rezultata" : `${from}–${to} od ${total}`}</span>
+        <div className="flex items-center gap-1">
+          <button className={btnGhostIcon} disabled={clampedPage <= 1} onClick={() => setPage(clampedPage - 1)}>
+            <ChevronLeft size={16} />
+          </button>
+          <span className="px-2">Strana {clampedPage} / {totalPages}</span>
+          <button className={btnGhostIcon} disabled={clampedPage >= totalPages} onClick={() => setPage(clampedPage + 1)}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci }) {
   const [q, setQ] = useState("");
   const [fLicenca, setFLicenca] = useState("Sve");
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [sortField, setSortField] = useState("naziv_firme");
+  const [sortDir, setSortDir] = useState("asc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
-  const filtered = data
-    .filter((k) => {
-      if (q && !((k.naziv_firme || "") + (k.grad || "") + (k.naziv_proizvoda || "") + (k.serijski_broj || "")).toLowerCase().includes(q.toLowerCase())) return false;
-      if (fLicenca !== "Sve") {
-        const s = licenseStatus(k.end_date).label;
-        if (s !== fLicenca) return false;
+  const handleSort = (field) => {
+    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortField(field); setSortDir("asc"); }
+    setPage(1);
+  };
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return data.filter((k) => {
+      if (query) {
+        const haystack = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!haystack.includes(query)) return false;
       }
+      if (fLicenca !== "Sve" && licenseStatus(k.end_date).label !== fLicenca) return false;
       return true;
-    })
-    .sort((a, b) => (a.end_date || "9999").localeCompare(b.end_date || "9999"));
+    });
+  }, [data, q, fLicenca]);
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      let va = a[sortField], vb = b[sortField];
+      if (sortField === "broj_licenci") { va = Number(va) || 0; vb = Number(vb) || 0; return (va - vb) * dir; }
+      va = (va || "").toString().toLowerCase();
+      vb = (vb || "").toString().toLowerCase();
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return arr;
+  }, [filtered, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageData = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleSave = async (payload) => {
     if (editing) await onUpdate(editing.id, payload);
@@ -580,15 +659,15 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
   return (
     <div>
       <Toolbar>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, gradu, proizvodu, serijskom broju..." />
-        <select className={inputCls + " w-auto"} value={fLicenca} onChange={(e) => setFLicenca(e.target.value)}>
+        <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Pretraži po firmi, gradu, proizvodu, serijskom broju..." />
+        <select className={inputCls + " w-auto"} value={fLicenca} onChange={(e) => { setFLicenca(e.target.value); setPage(1); }}>
           <option>Sve</option><option>Aktivno</option><option>Ističe uskoro</option><option>Isteklo</option>
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi / mjesečno ažuriranje</button>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj kupca</button>
       </Toolbar>
 
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <EmptyState icon={Building2} title="Nema unesenih kupaca" subtitle="Dodaj ručno ili uvezi tabelu postojećih kupaca i licenci."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvog kupca</button>} />
       ) : (
@@ -597,20 +676,20 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                  <th className="px-4 py-2.5">Firma</th>
-                  <th className="px-4 py-2.5">Grad / Država</th>
+                  <SortableHeader label="Firma" field="naziv_firme" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                  <SortableHeader label="Grad / Država" field="grad" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-2.5">Adresa</th>
-                  <th className="px-4 py-2.5">Proizvod</th>
+                  <SortableHeader label="Proizvod" field="naziv_proizvoda" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-2.5">Serijski broj</th>
-                  <th className="px-4 py-2.5 text-center">Broj licenci</th>
-                  <th className="px-4 py-2.5">Start</th>
-                  <th className="px-4 py-2.5">Ističe</th>
+                  <SortableHeader label="Broj licenci" field="broj_licenci" sortField={sortField} sortDir={sortDir} onSort={handleSort} align="center" />
+                  <SortableHeader label="Start" field="start_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                  <SortableHeader label="Ističe" field="end_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((k) => {
+                {pageData.map((k) => {
                   const s = licenseStatus(k.end_date);
                   return (
                     <tr key={k.id} className="hover:bg-slate-50/70">
@@ -641,6 +720,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
               </tbody>
             </table>
           </div>
+          <Pagination page={currentPage} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={sorted.length} />
         </div>
       )}
 
