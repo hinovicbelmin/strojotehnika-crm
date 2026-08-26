@@ -698,7 +698,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                   <SortableHeader label="Grad / Država" field="grad" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-2.5">Adresa</th>
                   <SortableHeader label="Proizvod" field="naziv_proizvoda" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <th className="px-4 py-2.5">Serijski broj</th>
+                  <th className="px-3 py-2.5 whitespace-nowrap">Serijski broj</th>
                   <SortableHeader label="Broj licenci" field="broj_licenci" sortField={sortField} sortDir={sortDir} onSort={handleSort} align="center" />
                   <SortableHeader label="Start" field="start_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <SortableHeader label="Ističe" field="end_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
@@ -715,16 +715,16 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                         {k.naziv_firme}
                         <div className="text-xs text-slate-400 font-normal"><MetaLine record={k} /></div>
                       </td>
-                      <td className="px-4 py-2.5 text-slate-600">{[k.grad, k.drzava].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{[k.grad, k.drzava].filter(Boolean).join(", ") || "—"}</td>
                       <td className="px-4 py-2.5 text-slate-500 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
                       <td className="px-4 py-2.5 text-slate-600">
                         {k.naziv_proizvoda || "—"}
                         {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400">{k.naziv_proizvoda_2}</div>}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-500 font-mono text-xs">{k.serijski_broj || "—"}</td>
-                      <td className="px-4 py-2.5 text-center text-slate-600">{k.broj_licenci ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(k.start_date)}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(k.end_date)}</td>
+                      <td className="px-3 py-2.5 text-slate-500 font-mono text-xs whitespace-nowrap">{k.serijski_broj || "—"}</td>
+                      <td className="px-2 py-2.5 text-center text-slate-600 whitespace-nowrap">{k.broj_licenci ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(k.start_date)}</td>
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(k.end_date)}</td>
                       <td className="px-4 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + s.cls}>{s.label}</span></td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1 justify-end">
