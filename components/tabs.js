@@ -36,6 +36,14 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
   const otvoreniPotencijali = potencijali.filter((p) => p.status !== "Dobijen" && p.status !== "Izgubljen").length;
 
+  const ukupnoLidova = lidovi.length;
+  const konvertovanoLidova = lidovi.filter((l) => l.status === "Konvertovan").length;
+  const potencijaliIzLeada = potencijali.filter((p) => p.origin_lead_id);
+  const dobijenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Dobijen").length;
+  const izgubljenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Izgubljen").length;
+  const stopaKonverzije = ukupnoLidova > 0 ? Math.round((konvertovanoLidova / ukupnoLidova) * 100) : 0;
+  const stopaDobijanja = konvertovanoLidova > 0 ? Math.round((dobijenoIzLeada / konvertovanoLidova) * 100) : 0;
+
   return (
     <div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -43,6 +51,37 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
         <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 text-violet-600" onClick={() => setTab("lidovi")} />
         <StatCard icon={Building2} label="Kupci / licence" value={kupci.length} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
         <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={isticuLicence.length} accent="bg-amber-50 text-amber-600" onClick={() => setTab("kupci")} />
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-4">
+        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
+          <TrendingUp size={15} className="text-slate-400" /> Konverzija lidova
+        </h3>
+        <div className="flex flex-col sm:flex-row items-stretch gap-3">
+          <div className="flex-1 rounded-lg bg-slate-50 border border-slate-100 p-4 text-center">
+            <div className="text-2xl font-bold text-slate-900">{ukupnoLidova}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Ukupno lidova</div>
+          </div>
+          <div className="flex items-center justify-center text-slate-300 sm:rotate-0 rotate-90">
+            <ChevronRight size={20} />
+          </div>
+          <div className="flex-1 rounded-lg bg-violet-50 border border-violet-100 p-4 text-center">
+            <div className="text-2xl font-bold text-violet-700">{konvertovanoLidova}</div>
+            <div className="text-xs text-violet-600 mt-0.5">Konvertovano u potencijal {ukupnoLidova > 0 && `(${stopaKonverzije}%)`}</div>
+          </div>
+          <div className="flex items-center justify-center text-slate-300 sm:rotate-0 rotate-90">
+            <ChevronRight size={20} />
+          </div>
+          <div className="flex-1 rounded-lg bg-green-50 border border-green-100 p-4 text-center">
+            <div className="text-2xl font-bold text-green-700">{dobijenoIzLeada}</div>
+            <div className="text-xs text-green-600 mt-0.5">Postalo kupac {konvertovanoLidova > 0 && `(${stopaDobijanja}%)`}</div>
+          </div>
+        </div>
+        {izgubljenoIzLeada > 0 && (
+          <p className="text-xs text-slate-400 mt-3">
+            Od konvertovanih, {izgubljenoIzLeada} {izgubljenoIzLeada === 1 ? "je označen" : "je označeno"} kao izgubljeno, ostalo je još u toku.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
