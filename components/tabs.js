@@ -6,7 +6,7 @@ import {
   CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2,
 } from "lucide-react";
 import {
-  COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE,
+  COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible,
 } from "../lib/crm";
@@ -145,6 +145,16 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
 /*  POTENCIJALI                                                            */
 /* ====================================================================== */
 
+function CountrySelect({ value, onChange }) {
+  const options = value && !EU_COUNTRIES.includes(value) ? [value, ...EU_COUNTRIES] : EU_COUNTRIES;
+  return (
+    <select className={inputCls} value={value || ""} onChange={onChange}>
+      <option value="">— odaberi državu —</option>
+      {options.map((c) => <option key={c}>{c}</option>)}
+    </select>
+  );
+}
+
 function PotencijalForm({ initial, currentUser, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
@@ -183,7 +193,7 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
           </select>
         </Field>
         <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
-        <Field label="Država"><input className={inputCls} value={f.drzava || ""} onChange={set("drzava")} /></Field>
+        <Field label="Država"><CountrySelect value={f.drzava} onChange={set("drzava")} /></Field>
         <Field label="Kontakt osoba"><input className={inputCls} value={f.kontakt_osoba || ""} onChange={set("kontakt_osoba")} /></Field>
         <Field label="Status">
           <select className={inputCls} value={f.status} onChange={set("status")}>
@@ -361,7 +371,7 @@ function LeadForm({ initial, currentUser, onSave, onClose }) {
           </select>
         </Field>
         <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
-        <Field label="Država"><input className={inputCls} value={f.drzava || ""} onChange={set("drzava")} /></Field>
+        <Field label="Država"><CountrySelect value={f.drzava} onChange={set("drzava")} /></Field>
         <Field label="Kontakt osoba"><input className={inputCls} value={f.kontakt_osoba || ""} onChange={set("kontakt_osoba")} /></Field>
         <Field label="Izvor leada" hint="npr. web forma, sajam, preporuka..."><input className={inputCls} value={f.izvor || ""} onChange={set("izvor")} /></Field>
         <Field label="Telefon"><input className={inputCls} value={f.telefon || ""} onChange={set("telefon")} /></Field>
@@ -794,6 +804,10 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
     }
   );
   const [busy, setBusy] = useState(false);
+  const uniqueFirme = useMemo(
+    () => Array.from(new Set(kupci.map((k) => k.naziv_firme).filter(Boolean))).sort((a, b) => a.localeCompare(b, "hr")),
+    [kupci]
+  );
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const submit = async () => {
     if (!f.firma.trim() || !f.tehnicar || !f.opis.trim() || !currentUser) return;
@@ -813,7 +827,7 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
   return (
     <Modal title={initial ? "Uredi zapis podrške" : "Nova intervencija podrške"} onClose={onClose} wide>
       <datalist id="firme-list">
-        {kupci.map((k) => <option key={k.id} value={k.naziv_firme} />)}
+        {uniqueFirme.map((name) => <option key={name} value={name} />)}
       </datalist>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Firma" required>
