@@ -21,11 +21,21 @@ const TABS = [
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
+const CACHE_KEY = "crm_data_cache_v1";
+function saveCacheSafe(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  } catch {
+    // ako je keš prevelik za localStorage, jednostavno preskoči keširanje
+  }
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [session, setSession] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [dataReady, setDataReady] = useState(false);
   const [tab, setTab] = useState("pregled");
   const [navOpen, setNavOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
@@ -53,19 +63,41 @@ export default function HomePage() {
     return () => listener.subscription.unsubscribe();
   }, [router]);
 
-  // Load data once authenticated
+  // Load data once authenticated — prvo pokaži zadnje keširano stanje (ako postoji), pa tiho osvježi u pozadini
   useEffect(() => {
     if (!session) return;
+    let cached = null;
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      cached = raw ? JSON.parse(raw) : null;
+    } catch {
+      cached = null;
+    }
+    if (cached) {
+      setPotencijali(cached.potencijali || []);
+      setLidovi(cached.lidovi || []);
+      setKupci(cached.kupci || []);
+      setPodrska(cached.podrska || []);
+      setLoadingData(false);
+      setDataReady(true);
+    }
     (async () => {
-      setLoadingData(true);
+      if (!cached) setLoadingData(true);
       const all = await fetchAllData();
       setPotencijali(all.potencijali);
       setLidovi(all.lidovi);
       setKupci(all.kupci);
       setPodrska(all.podrska);
       setLoadingData(false);
+      setDataReady(true);
     })();
   }, [session]);
+
+  // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
+  useEffect(() => {
+    if (!dataReady) return;
+    saveCacheSafe({ potencijali, lidovi, kupci, podrska });
+  }, [dataReady, potencijali, lidovi, kupci, podrska]);
 
   const chooseUser = (name) => {
     setCurrentUser(name);
@@ -74,6 +106,9 @@ export default function HomePage() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    try {
+      localStorage.removeItem(CACHE_KEY);
+    } catch {}
     router.push("/login");
   };
 
