@@ -141,6 +141,7 @@ export default function HomePage() {
       kolega: lead.kolega, status: "Novi kontakt",
       napomena: (lead.napomena ? lead.napomena + " " : "") + `(konvertovano iz leada, izvor: ${lead.izvor || "n/a"})`,
       podsjetnik_datum: null, podsjetnik_opis: "",
+      origin_lead_id: lead.id,
       created_by: currentUser || lead.kolega, created_at: new Date().toISOString(),
       updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
     };
