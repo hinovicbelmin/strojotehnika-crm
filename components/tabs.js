@@ -922,11 +922,30 @@ export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete
 /* ====================================================================== */
 
 export function PodsjetniciTab({ potencijali, lidovi, onClear }) {
-  const items = getReminders(potencijali, lidovi);
+  const [fKolega, setFKolega] = useState("Svi");
+  const allItems = getReminders(potencijali, lidovi);
+  const items = fKolega === "Svi" ? allItems : allItems.filter((r) => r.kolega === fKolega);
+
   return (
     <div>
+      <Toolbar>
+        <select className={inputCls + " w-auto"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
+          <option>Svi</option>
+          {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
+        </select>
+        {fKolega !== "Svi" && (
+          <span className="text-sm text-slate-500">
+            {items.length} {items.length === 1 ? "podsjetnik" : "podsjetnika"} za <span className="font-medium text-slate-700">{fKolega}</span>
+          </span>
+        )}
+      </Toolbar>
+
       {items.length === 0 ? (
-        <EmptyState icon={Bell} title="Nema aktivnih podsjetnika" subtitle="Podsjetnike dodaješ direktno na potencijalu ili leadu (poziv, sastanak, follow-up)." />
+        <EmptyState
+          icon={Bell}
+          title={fKolega === "Svi" ? "Nema aktivnih podsjetnika" : `Nema podsjetnika za ${fKolega}`}
+          subtitle="Podsjetnike dodaješ direktno na potencijalu ili leadu (poziv, sastanak, follow-up)."
+        />
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
           {items.map((r) => {
