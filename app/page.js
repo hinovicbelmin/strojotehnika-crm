@@ -8,6 +8,7 @@ import { supabase } from "../lib/supabaseClient";
 import {
   COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, todayStr,
 } from "../lib/crm";
+import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
   PregledTab, PotencijaliTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
 } from "../components/tabs";
@@ -22,13 +23,6 @@ const TABS = [
 ];
 
 const CACHE_KEY = "crm_data_cache_v1";
-function saveCacheSafe(data) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // ako je keš prevelik za localStorage, jednostavno preskoči keširanje
-  }
-}
 
 export default function HomePage() {
   const router = useRouter();
@@ -66,23 +60,18 @@ export default function HomePage() {
   // Load data once authenticated — prvo pokaži zadnje keširano stanje (ako postoji), pa tiho osvježi u pozadini
   useEffect(() => {
     if (!session) return;
-    let cached = null;
-    try {
-      const raw = localStorage.getItem(CACHE_KEY);
-      cached = raw ? JSON.parse(raw) : null;
-    } catch {
-      cached = null;
-    }
-    if (cached) {
-      setPotencijali(cached.potencijali || []);
-      setLidovi(cached.lidovi || []);
-      setKupci(cached.kupci || []);
-      setPodrska(cached.podrska || []);
-      setLoadingData(false);
-      setDataReady(true);
-    }
     (async () => {
-      if (!cached) setLoadingData(true);
+      const cached = await idbGet(CACHE_KEY);
+      if (cached) {
+        setPotencijali(cached.potencijali || []);
+        setLidovi(cached.lidovi || []);
+        setKupci(cached.kupci || []);
+        setPodrska(cached.podrska || []);
+        setLoadingData(false);
+        setDataReady(true);
+      } else {
+        setLoadingData(true);
+      }
       const all = await fetchAllData();
       setPotencijali(all.potencijali);
       setLidovi(all.lidovi);
@@ -96,7 +85,7 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    saveCacheSafe({ potencijali, lidovi, kupci, podrska });
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska });
   }, [dataReady, potencijali, lidovi, kupci, podrska]);
 
   const chooseUser = (name) => {
@@ -106,9 +95,7 @@ export default function HomePage() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    try {
-      localStorage.removeItem(CACHE_KEY);
-    } catch {}
+    await idbRemove(CACHE_KEY);
     router.push("/login");
   };
 
