@@ -715,7 +715,11 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                         {k.naziv_firme}
                         <div className="text-xs text-slate-400 font-normal"><MetaLine record={k} /></div>
                       </td>
-                      <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{[k.grad, k.drzava].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600">
+                        {k.grad && <div>{k.grad}</div>}
+                        {k.drzava && <div className="text-xs text-slate-400">{k.drzava}</div>}
+                        {!k.grad && !k.drzava && "—"}
+                      </td>
                       <td className="px-4 py-2.5 text-slate-500 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
                       <td className="px-4 py-2.5 text-slate-600">
                         {k.naziv_proizvoda || "—"}
