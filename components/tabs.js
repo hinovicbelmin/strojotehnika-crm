@@ -36,6 +36,10 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
   const otvoreniPotencijali = potencijali.filter((p) => p.status !== "Dobijen" && p.status !== "Izgubljen").length;
 
+  const normFirma = (name) => (name || "").trim().toLowerCase();
+  const brojUnikatnihKupaca = new Set(kupci.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
+  const brojUnikatnihKupacaSaIstekom = new Set(isticuLicence.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
+
   const ukupnoLidova = lidovi.length;
   const konvertovanoLidova = lidovi.filter((l) => l.status === "Konvertovan").length;
   const potencijaliIzLeada = potencijali.filter((p) => p.origin_lead_id);
@@ -49,8 +53,8 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali} accent="bg-blue-50 text-blue-600" onClick={() => setTab("potencijali")} />
         <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 text-violet-600" onClick={() => setTab("lidovi")} />
-        <StatCard icon={Building2} label="Kupci / licence" value={kupci.length} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
-        <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={isticuLicence.length} accent="bg-amber-50 text-amber-600" onClick={() => setTab("kupci")} />
+        <StatCard icon={Building2} label="Kupci / licence" value={brojUnikatnihKupaca} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
+        <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 text-amber-600" onClick={() => setTab("kupci")} />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-4">
