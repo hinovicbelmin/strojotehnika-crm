@@ -53,7 +53,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali} accent="bg-blue-50 text-blue-600" onClick={() => setTab("potencijali")} />
         <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 text-violet-600" onClick={() => setTab("lidovi")} />
-        <StatCard icon={Building2} label="Kupci / licence" value={brojUnikatnihKupaca} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
+        <StatCard icon={Building2} label="Kupci" value={brojUnikatnihKupaca} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
         <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 text-amber-600" onClick={() => setTab("kupci")} />
       </div>
 
@@ -201,18 +201,32 @@ function CountrySelect({ value, onChange }) {
 function PotencijalForm({ initial, currentUser, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
-      naziv_firme: "", grad: "", drzava: "", kontakt_osoba: "", telefon: "", email: "",
+      naziv_firme: "", grad: "", drzava: "", djelatnost: "", kontakt_osoba: "", telefon: "", email: "",
       kolega: currentUser || "", status: "Novi kontakt", napomena: "",
-      podsjetnik_datum: "", podsjetnik_opis: "",
+      podsjetnik_datum: "", podsjetnik_opis: "", dodatni_kontakti: [],
     }
   );
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const dodatniKontakti = f.dodatni_kontakti || [];
+  const addKontakt = () => setF({ ...f, dodatni_kontakti: [...dodatniKontakti, { ime: "", telefon: "", email: "", napomena: "" }] });
+  const updateKontakt = (idx, key, val) => {
+    const arr = dodatniKontakti.map((k, i) => (i === idx ? { ...k, [key]: val } : k));
+    setF({ ...f, dodatni_kontakti: arr });
+  };
+  const removeKontakt = (idx) => setF({ ...f, dodatni_kontakti: dodatniKontakti.filter((_, i) => i !== idx) });
+
   const submit = async () => {
     if (!f.naziv_firme.trim() || !f.kolega || !currentUser) return;
     setBusy(true);
     try {
-      const payload = { ...f, podsjetnik_datum: f.podsjetnik_datum || null, updated_by: currentUser, updated_at: new Date().toISOString() };
+      const payload = {
+        ...f,
+        podsjetnik_datum: f.podsjetnik_datum || null,
+        dodatni_kontakti: dodatniKontakti.filter((k) => (k.ime || "").trim() || (k.telefon || "").trim() || (k.email || "").trim()),
+        updated_by: currentUser, updated_at: new Date().toISOString(),
+      };
       if (!initial) {
         payload.created_by = currentUser;
         payload.created_at = new Date().toISOString();
@@ -237,15 +251,42 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
         </Field>
         <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
         <Field label="Država"><CountrySelect value={f.drzava} onChange={set("drzava")} /></Field>
-        <Field label="Kontakt osoba"><input className={inputCls} value={f.kontakt_osoba || ""} onChange={set("kontakt_osoba")} /></Field>
+        <Field label="Djelatnost" hint="npr. metalna industrija, IT usluge..."><input className={inputCls} value={f.djelatnost || ""} onChange={set("djelatnost")} /></Field>
         <Field label="Status">
           <select className={inputCls} value={f.status} onChange={set("status")}>
             {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
           </select>
         </Field>
+        <Field label="Kontakt osoba" hint="Glavni kontakt"><input className={inputCls} value={f.kontakt_osoba || ""} onChange={set("kontakt_osoba")} /></Field>
         <Field label="Telefon"><input className={inputCls} value={f.telefon || ""} onChange={set("telefon")} /></Field>
         <Field label="Email"><input className={inputCls} value={f.email || ""} onChange={set("email")} /></Field>
       </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Dodatni kontakti</span>
+          <button type="button" onClick={addKontakt} className="text-xs text-teal-600 font-medium hover:underline flex items-center gap-1">
+            <Plus size={13} /> Dodaj kontakt
+          </button>
+        </div>
+        {dodatniKontakti.length === 0 ? (
+          <p className="text-xs text-slate-400">Nema dodatnih kontakata — koristi ovo ako firma ima više osoba za kontakt.</p>
+        ) : (
+          <div className="space-y-2">
+            {dodatniKontakti.map((k, idx) => (
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-start bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+                <input className={inputCls} placeholder="Ime i prezime" value={k.ime || ""} onChange={(e) => updateKontakt(idx, "ime", e.target.value)} />
+                <input className={inputCls} placeholder="Telefon" value={k.telefon || ""} onChange={(e) => updateKontakt(idx, "telefon", e.target.value)} />
+                <input className={inputCls} placeholder="Email" value={k.email || ""} onChange={(e) => updateKontakt(idx, "email", e.target.value)} />
+                <button type="button" onClick={() => removeKontakt(idx)} className={btnGhostIcon} title="Ukloni kontakt">
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <Field label="Napomena">
         <textarea className={inputCls} rows={3} value={f.napomena || ""} onChange={set("napomena")} />
       </Field>
@@ -272,16 +313,18 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
 
 export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport }) {
   const [q, setQ] = useState("");
-  const [fKolega, setFKolega] = useState("Svi");
-  const [fStatus, setFStatus] = useState("Svi");
+  const [fKolega, setFKolega] = useState("Sve kolege");
+  const [fStatus, setFStatus] = useState("Svi statusi");
+  const [fDrzava, setFDrzava] = useState("Sve države");
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
   const filtered = data.filter((p) => {
-    if (fKolega !== "Svi" && p.kolega !== fKolega) return false;
-    if (fStatus !== "Svi" && p.status !== fStatus) return false;
-    if (q && !((p.naziv_firme || "") + (p.grad || "") + (p.kontakt_osoba || "")).toLowerCase().includes(q.toLowerCase())) return false;
+    if (fKolega !== "Sve kolege" && p.kolega !== fKolega) return false;
+    if (fStatus !== "Svi statusi" && p.status !== fStatus) return false;
+    if (fDrzava !== "Sve države" && p.drzava !== fDrzava) return false;
+    if (q && !((p.naziv_firme || "") + (p.kontakt_osoba || "") + (p.djelatnost || "") + (p.grad || "")).toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
 
@@ -293,15 +336,21 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
   return (
     <div>
       <Toolbar>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, gradu, kontaktu..." />
+        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
         <select className={inputCls + " w-auto"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
-          <option>Svi</option>
+          <option>Sve kolege</option>
           {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
         </select>
         <select className={inputCls + " w-auto"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option>Svi</option>
+          <option>Svi statusi</option>
           {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <select className={inputCls + " w-auto"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
+          <option>Sve države</option>
+          {EU_COUNTRIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+      </Toolbar>
+      <Toolbar>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj potencijala</button>
       </Toolbar>
@@ -310,39 +359,40 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         <EmptyState icon={Target} title="Nema unesenih potencijala" subtitle="Dodaj ručno ili uvezi postojeću bazu potencijala iz Excela."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi potencijal</button>} />
       ) : (
-        <div className="space-y-2.5">
-          {filtered.map((p) => (
-            <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-colors">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-slate-900">{p.naziv_firme}</h4>
-                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[p.status] || "bg-slate-100 text-slate-600")}>{p.status}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-1.5">
-                    {(p.grad || p.drzava) && <span className="flex items-center gap-1"><MapPin size={12} /> {[p.grad, p.drzava].filter(Boolean).join(", ")}</span>}
-                    {p.kontakt_osoba && <span className="flex items-center gap-1"><User size={12} /> {p.kontakt_osoba}</span>}
-                    {p.telefon && <span className="flex items-center gap-1"><Phone size={12} /> {p.telefon}</span>}
-                    {p.email && <span className="flex items-center gap-1"><Mail size={12} /> {p.email}</span>}
-                    <span className="flex items-center gap-1 font-medium text-slate-600"><User size={12} /> {p.kolega}</span>
-                  </div>
-                  {p.napomena && <p className="text-sm text-slate-600 mt-2">{p.napomena}</p>}
-                  {p.podsjetnik_datum && (
-                    <div className="mt-2 inline-flex items-center gap-1.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full flex items-center gap-1 " + reminderUrgency(p.podsjetnik_datum).cls}>
-                        <Bell size={11} /> {fmtDate(p.podsjetnik_datum)} {p.podsjetnik_opis ? `— ${p.podsjetnik_opis}` : ""}
-                      </span>
-                    </div>
-                  )}
-                  <MetaLine record={p} />
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={15} /></button>
-                  <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <th className="px-4 py-2.5">Firma</th>
+                  <th className="px-4 py-2.5">Grad</th>
+                  <th className="px-4 py-2.5">Država</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Kolega</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/70 cursor-pointer" onClick={() => setEditing(p)}>
+                    <td className="px-4 py-2.5 font-medium text-slate-800">{p.naziv_firme}</td>
+                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.grad || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.drzava || "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[p.status] || "bg-slate-100 text-slate-600")}>{p.status}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.kolega || "—"}</td>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 justify-end">
+                        <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
+                        <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
