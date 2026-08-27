@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
-  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2,
+  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
@@ -333,23 +333,57 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
     else await onAdd(payload);
   };
 
+  const exportCSV = () => {
+    const headers = [
+      "Naziv firme", "Grad", "Država", "Djelatnost", "Kontakt osoba", "Telefon", "Email",
+      "Kolega", "Status", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
+      "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
+    ];
+    const esc = (val) => {
+      const s = val == null ? "" : String(val);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const rows = filtered.map((p) =>
+      [
+        p.naziv_firme, p.grad, p.drzava, p.djelatnost, p.kontakt_osoba, p.telefon, p.email,
+        p.kolega, p.status, p.napomena, p.podsjetnik_datum, p.podsjetnik_opis,
+        p.created_by, p.created_at, p.updated_by, p.updated_at,
+      ].map(esc).join(",")
+    );
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `potencijali_${todayStr()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
-      <Toolbar>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
-        <select className={inputCls + " w-auto"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
+      <div className="flex flex-nowrap items-center gap-2 mb-3 overflow-x-auto pb-1">
+        <div className="min-w-[220px] flex-1">
+          <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
+        </div>
+        <select className={inputCls + " w-auto shrink-0"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
           <option>Sve kolege</option>
           {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
         </select>
-        <select className={inputCls + " w-auto"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+        <select className={inputCls + " w-auto shrink-0"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option>Svi statusi</option>
           {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
         </select>
-        <select className={inputCls + " w-auto"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
+        <select className={inputCls + " w-auto shrink-0"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
           <option>Sve države</option>
           {EU_COUNTRIES.map((c) => <option key={c}>{c}</option>)}
         </select>
-      </Toolbar>
+        <button className={btnSecondary + " shrink-0"} onClick={exportCSV}>
+          <Download size={15} /> Izvoz CSV
+        </button>
+      </div>
       <Toolbar>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj potencijala</button>
