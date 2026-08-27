@@ -364,19 +364,19 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
 
   return (
     <div>
-      <div className="flex flex-nowrap items-center gap-2 mb-3 overflow-x-auto pb-1">
-        <div className="min-w-[220px] flex-1">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="w-96 max-w-full">
           <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
         </div>
-        <select className={inputCls + " w-auto shrink-0"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
+        <select className={inputCls + " w-28 shrink-0"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
           <option>Sve kolege</option>
           {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
         </select>
-        <select className={inputCls + " w-auto shrink-0"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+        <select className={inputCls + " w-28 shrink-0"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option>Svi statusi</option>
           {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
         </select>
-        <select className={inputCls + " w-auto shrink-0"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
+        <select className={inputCls + " w-28 shrink-0"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
           <option>Sve države</option>
           {EU_COUNTRIES.map((c) => <option key={c}>{c}</option>)}
         </select>
