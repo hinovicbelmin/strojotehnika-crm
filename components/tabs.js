@@ -366,7 +366,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
     <div>
       <div
         className="grid items-center gap-2 mb-3"
-        style={{ gridTemplateColumns: "minmax(160px,380px) minmax(70px,110px) minmax(70px,110px) minmax(70px,110px) auto" }}
+        style={{ gridTemplateColumns: "minmax(160px,420px) minmax(70px,150px) minmax(70px,150px) minmax(70px,150px) 1fr minmax(70px,150px)" }}
       >
         <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
         <select className={inputCls} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
@@ -381,7 +381,11 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
           <option>Sve države</option>
           {EU_COUNTRIES.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <button className={btnSecondary} onClick={exportCSV}>
+        <div />
+        <button
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          onClick={exportCSV}
+        >
           <Download size={15} /> Izvoz CSV
         </button>
       </div>
