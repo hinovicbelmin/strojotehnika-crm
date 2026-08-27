@@ -364,23 +364,24 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="w-96 max-w-full">
-          <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
-        </div>
-        <select className={inputCls + " w-28 shrink-0"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
+      <div
+        className="grid items-center gap-2 mb-3"
+        style={{ gridTemplateColumns: "minmax(160px,380px) minmax(70px,110px) minmax(70px,110px) minmax(70px,110px) auto" }}
+      >
+        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, kontaktu, djelatnosti..." />
+        <select className={inputCls} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
           <option>Sve kolege</option>
           {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
         </select>
-        <select className={inputCls + " w-28 shrink-0"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+        <select className={inputCls} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option>Svi statusi</option>
           {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
         </select>
-        <select className={inputCls + " w-28 shrink-0"} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
+        <select className={inputCls} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
           <option>Sve države</option>
           {EU_COUNTRIES.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <button className={btnSecondary + " shrink-0"} onClick={exportCSV}>
+        <button className={btnSecondary} onClick={exportCSV}>
           <Download size={15} /> Izvoz CSV
         </button>
       </div>
