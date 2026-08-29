@@ -11,10 +11,21 @@ import {
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal } from "./ui";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ====================================================================== */
 /*  PREGLED                                                                */
 /* ====================================================================== */
+
+const STATUS_HEX = {
+  "Novi kontakt": "#94a3b8",
+  "U pregovorima": "#3b82f6",
+  "Ponuda poslana": "#8b5cf6",
+  "Na čekanju": "#f59e0b",
+  Dobijen: "#22c55e",
+  Izgubljen: "#ef4444",
+};
+const LICENCA_HEX = { Aktivno: "#22c55e", "Ističe uskoro": "#f59e0b", Isteklo: "#ef4444" };
 
 function StatCard({ icon: Icon, label, value, accent, onClick }) {
   return (
@@ -47,6 +58,24 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
   const izgubljenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Izgubljen").length;
   const stopaKonverzije = ukupnoLidova > 0 ? Math.round((konvertovanoLidova / ukupnoLidova) * 100) : 0;
   const stopaDobijanja = konvertovanoLidova > 0 ? Math.round((dobijenoIzLeada / konvertovanoLidova) * 100) : 0;
+
+  const potencijaliChartData = POTENCIJAL_STATUSI.map((s) => ({
+    status: s,
+    broj: potencijali.filter((p) => p.status === s).length,
+  }));
+
+  const RANK = { Isteklo: 3, "Ističe uskoro": 2, Aktivno: 1, Nepoznato: 0 };
+  const companyStatusMap = new Map();
+  kupci.forEach((k) => {
+    const name = normFirma(k.naziv_firme);
+    if (!name) return;
+    const s = licenseStatus(k.end_date).label;
+    const current = companyStatusMap.get(name);
+    if (!current || RANK[s] > RANK[current]) companyStatusMap.set(name, s);
+  });
+  const licencaChartData = ["Aktivno", "Ističe uskoro", "Isteklo"]
+    .map((label) => ({ name: label, value: Array.from(companyStatusMap.values()).filter((v) => v === label).length }))
+    .filter((d) => d.value > 0);
 
   return (
     <div>
@@ -86,6 +115,63 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
             Od konvertovanih, {izgubljenoIzLeada} {izgubljenoIzLeada === 1 ? "je označen" : "je označeno"} kao izgubljeno, ostalo je još u toku.
           </p>
         )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
+            <Target size={15} className="text-slate-400" /> Potencijali po statusu
+          </h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={potencijaliChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="status" tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={-20} textAnchor="end" height={55} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} />
+              <Tooltip
+                contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }}
+                formatter={(value) => [value, "Broj"]}
+              />
+              <Bar dataKey="broj" radius={[6, 6, 0, 0]}>
+                {potencijaliChartData.map((d, i) => (
+                  <Cell key={i} fill={STATUS_HEX[d.status] || "#94a3b8"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
+            <Building2 size={15} className="text-slate-400" /> Kupci po statusu licence
+          </h3>
+          {licencaChartData.length === 0 ? (
+            <p className="text-sm text-slate-400 py-16 text-center">Nema podataka o licencama.</p>
+          ) : (
+            <div className="flex items-center gap-4">
+              <ResponsiveContainer width="60%" height={220}>
+                <PieChart>
+                  <Pie data={licencaChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                    {licencaChartData.map((d, i) => (
+                      <Cell key={i} fill={LICENCA_HEX[d.name]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex-1 space-y-2">
+                {licencaChartData.map((d) => (
+                  <div key={d.name} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 text-slate-600">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: LICENCA_HEX[d.name] }} />
+                      {d.name}
+                    </span>
+                    <span className="font-semibold text-slate-800">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
