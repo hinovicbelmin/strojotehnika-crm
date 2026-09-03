@@ -13,7 +13,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cart
 /*  FORMA ZA UNOS / UREĐIVANJE STAVKE                                     */
 /* ---------------------------------------------------------------------- */
 
-function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, onSave, onClose }) {
+function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
       mjesec: defaultMjesec,
@@ -29,10 +29,13 @@ function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, onSave
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
-  const uniqueFirme = useMemo(
-    () => Array.from(new Set(potencijali.map((p) => p.naziv_firme).filter(Boolean))).sort((a, b) => a.localeCompare(b, "hr")),
-    [potencijali]
-  );
+  const uniqueFirme = useMemo(() => {
+    const names = [
+      ...potencijali.map((p) => p.naziv_firme),
+      ...(kupci || []).map((k) => k.naziv_firme),
+    ].filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, "hr"));
+  }, [potencijali, kupci]);
 
   const submit = async () => {
     if (!f.mjesec || !f.kupac.trim() || !currentUser) return;
@@ -145,7 +148,7 @@ function TrendChart({ data }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, currentUser, onAdd, onUpdate, onDelete }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -289,6 +292,7 @@ export function ForecastTab({ data, potencijali, currentUser, onAdd, onUpdate, o
           currentUser={currentUser}
           defaultMjesec={mjesec}
           potencijali={potencijali}
+          kupci={kupci}
           onSave={handleSave}
           onClose={() => { setShowNew(false); setEditing(null); }}
         />
