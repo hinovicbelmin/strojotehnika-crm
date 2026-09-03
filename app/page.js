@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut,
+  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -12,6 +12,7 @@ import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
   PregledTab, PotencijaliTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
 } from "../components/tabs";
+import { ForecastTab } from "../components/forecast";
 
 const TABS = [
   { id: "pregled", label: "Pregled", icon: Home },
@@ -19,6 +20,7 @@ const TABS = [
   { id: "lidovi", label: "Lidovi", icon: TrendingUp },
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
+  { id: "forecast", label: "Forecast", icon: LineChart },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
@@ -38,6 +40,7 @@ export default function HomePage() {
   const [lidovi, setLidovi] = useState([]);
   const [kupci, setKupci] = useState([]);
   const [podrska, setPodrska] = useState([]);
+  const [forecast, setForecast] = useState([]);
 
   // Auth guard
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function HomePage() {
         setLidovi(cached.lidovi || []);
         setKupci(cached.kupci || []);
         setPodrska(cached.podrska || []);
+        setForecast(cached.forecast || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -77,6 +81,7 @@ export default function HomePage() {
       setLidovi(all.lidovi);
       setKupci(all.kupci);
       setPodrska(all.podrska);
+      setForecast(all.forecast || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -85,8 +90,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska });
-  }, [dataReady, potencijali, lidovi, kupci, podrska]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast]);
 
   const chooseUser = (name) => {
     setCurrentUser(name);
@@ -169,6 +174,20 @@ export default function HomePage() {
   const deleteAllKupci = async () => {
     await deleteAllRows("kupci");
     setKupci([]);
+  };
+
+  /* ---------------- Forecast handlers ---------------- */
+  const addForecast = async (payload) => {
+    const rec = await insertRow("forecast", payload);
+    setForecast((prev) => [rec, ...prev]);
+  };
+  const updateForecast = async (id, patch) => {
+    const rec = await updateRow("forecast", id, patch);
+    setForecast((prev) => prev.map((f) => (f.id === id ? rec : f)));
+  };
+  const deleteForecast = async (id) => {
+    await deleteRow("forecast", id);
+    setForecast((prev) => prev.filter((f) => f.id !== id));
   };
   // Svaki red iz fajla je UVIJEK poseban zapis (bez spajanja/upsert-a po serijskom broju).
   // Napomena: ako se isti fajl uveze ponovo (npr. mjesečno), stariji zapisi ostaju —
@@ -344,6 +363,16 @@ export default function HomePage() {
               onAdd={addPodrska}
               onUpdate={updatePodrska}
               onDelete={deletePodrska}
+            />
+          )}
+          {tab === "forecast" && (
+            <ForecastTab
+              data={forecast}
+              potencijali={potencijali}
+              currentUser={currentUser}
+              onAdd={addForecast}
+              onUpdate={updateForecast}
+              onDelete={deleteForecast}
             />
           )}
           {tab === "podsjetnici" && (
