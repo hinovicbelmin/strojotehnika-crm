@@ -307,9 +307,12 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
     if (!f.naziv_firme.trim() || !f.kolega || !currentUser) return;
     setBusy(true);
     try {
+      let datumDobijanja = (initial && initial.datum_dobijanja) || null;
+      if (f.status === "Dobijen" && !datumDobijanja) datumDobijanja = todayStr();
       const payload = {
         ...f,
         podsjetnik_datum: f.podsjetnik_datum || null,
+        datum_dobijanja: datumDobijanja,
         dodatni_kontakti: dodatniKontakti.filter((k) => (k.ime || "").trim() || (k.telefon || "").trim() || (k.email || "").trim()),
         updated_by: currentUser, updated_at: new Date().toISOString(),
       };
@@ -387,6 +390,11 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
       <Field label="Unio / ažurira">
         <input className={inputCls + " bg-slate-50"} value={currentUser || "— odaberite se u vrhu stranice —"} disabled />
       </Field>
+      {initial && initial.datum_dobijanja && (
+        <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 -mt-2 mb-4">
+          ✓ Dobijeno: {fmtDate(initial.datum_dobijanja)}
+        </p>
+      )}
       <div className="flex justify-end gap-2 mt-2">
         <button className={btnSecondary} onClick={onClose}>Otkaži</button>
         <button className={btnPrimary} onClick={submit} disabled={!f.naziv_firme.trim() || !f.kolega || !currentUser || busy}>
