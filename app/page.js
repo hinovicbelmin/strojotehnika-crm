@@ -16,11 +16,11 @@ import { ForecastTab } from "../components/forecast";
 
 const TABS = [
   { id: "pregled", label: "Pregled", icon: Home },
+  { id: "forecast", label: "Forecast", icon: LineChart },
   { id: "potencijali", label: "Baza potencijala", icon: Target },
   { id: "lidovi", label: "Lidovi", icon: TrendingUp },
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
-  { id: "forecast", label: "Forecast", icon: LineChart },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
@@ -369,6 +369,7 @@ export default function HomePage() {
             <ForecastTab
               data={forecast}
               potencijali={potencijali}
+              kupci={kupci}
               currentUser={currentUser}
               onAdd={addForecast}
               onUpdate={updateForecast}
