@@ -29,19 +29,19 @@ const LICENCA_HEX = { Aktivno: "#22c55e", "Ističe uskoro": "#f59e0b", Isteklo: 
 
 function StatCard({ icon: Icon, label, value, accent, onClick }) {
   return (
-    <button onClick={onClick} className="text-left bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:border-slate-300 transition-all">
+    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150">
       <div className="flex items-center justify-between mb-3">
         <div className={"w-9 h-9 rounded-lg flex items-center justify-center " + accent}>
           <Icon size={17} />
         </div>
       </div>
-      <div className="text-2xl font-bold text-slate-900 tracking-tight">{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{value}</div>
+      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</div>
     </button>
   );
 }
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
+export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
   const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
@@ -77,60 +77,68 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
     .map((label) => ({ name: label, value: Array.from(companyStatusMap.values()).filter((v) => v === label).length }))
     .filter((d) => d.value > 0);
 
+  const isDark = theme === "dark";
+  const axisColor = isDark ? "#94a3b8" : "#64748b";
+  const gridColor = isDark ? "#334155" : "#f1f5f9";
+  const tooltipStyle = {
+    borderRadius: 10,
+    border: isDark ? "1px solid #334155" : "1px solid #e2e8f0",
+    fontSize: 13,
+    backgroundColor: isDark ? "#1e293b" : "#ffffff",
+    color: isDark ? "#e2e8f0" : "#0f172a",
+  };
+
   return (
     <div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali} accent="bg-blue-50 text-blue-600" onClick={() => setTab("potencijali")} />
-        <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 text-violet-600" onClick={() => setTab("lidovi")} />
-        <StatCard icon={Building2} label="Kupci" value={brojUnikatnihKupaca} accent="bg-teal-50 text-teal-600" onClick={() => setTab("kupci")} />
-        <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 text-amber-600" onClick={() => setTab("kupci")} />
+        <StatCard icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali} accent="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" onClick={() => setTab("potencijali")} />
+        <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" onClick={() => setTab("lidovi")} />
+        <StatCard icon={Building2} label="Kupci" value={brojUnikatnihKupaca} accent="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" onClick={() => setTab("kupci")} />
+        <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" onClick={() => setTab("kupci")} />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-4">
-        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-slate-400" /> Konverzija lidova
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mb-4 transition-colors duration-150">
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
+          <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Konverzija lidova
         </h3>
         <div className="flex flex-col sm:flex-row items-stretch gap-3">
-          <div className="flex-1 rounded-lg bg-slate-50 border border-slate-100 p-4 text-center">
-            <div className="text-2xl font-bold text-slate-900">{ukupnoLidova}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Ukupno lidova</div>
+          <div className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 dark:border-slate-700 p-4 text-center">
+            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{ukupnoLidova}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ukupno lidova</div>
           </div>
-          <div className="flex items-center justify-center text-slate-300 sm:rotate-0 rotate-90">
+          <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
             <ChevronRight size={20} />
           </div>
-          <div className="flex-1 rounded-lg bg-violet-50 border border-violet-100 p-4 text-center">
-            <div className="text-2xl font-bold text-violet-700">{konvertovanoLidova}</div>
-            <div className="text-xs text-violet-600 mt-0.5">Konvertovano u potencijal {ukupnoLidova > 0 && `(${stopaKonverzije}%)`}</div>
+          <div className="flex-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50 p-4 text-center">
+            <div className="text-2xl font-bold text-violet-700 dark:text-violet-400">{konvertovanoLidova}</div>
+            <div className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">Konvertovano u potencijal {ukupnoLidova > 0 && `(${stopaKonverzije}%)`}</div>
           </div>
-          <div className="flex items-center justify-center text-slate-300 sm:rotate-0 rotate-90">
+          <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
             <ChevronRight size={20} />
           </div>
-          <div className="flex-1 rounded-lg bg-green-50 border border-green-100 p-4 text-center">
-            <div className="text-2xl font-bold text-green-700">{dobijenoIzLeada}</div>
-            <div className="text-xs text-green-600 mt-0.5">Postalo kupac {konvertovanoLidova > 0 && `(${stopaDobijanja}%)`}</div>
+          <div className="flex-1 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/50 p-4 text-center">
+            <div className="text-2xl font-bold text-green-700 dark:text-green-400">{dobijenoIzLeada}</div>
+            <div className="text-xs text-green-600 dark:text-green-400 mt-0.5">Postalo kupac {konvertovanoLidova > 0 && `(${stopaDobijanja}%)`}</div>
           </div>
         </div>
         {izgubljenoIzLeada > 0 && (
-          <p className="text-xs text-slate-400 mt-3">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
             Od konvertovanih, {izgubljenoIzLeada} {izgubljenoIzLeada === 1 ? "je označen" : "je označeno"} kao izgubljeno, ostalo je još u toku.
           </p>
         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
-            <Target size={15} className="text-slate-400" /> Potencijali po statusu
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
+            <Target size={15} className="text-slate-400 dark:text-slate-500" /> Potencijali po statusu
           </h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={potencijaliChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="status" tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={-20} textAnchor="end" height={55} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} />
-              <Tooltip
-                contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }}
-                formatter={(value) => [value, "Broj"]}
-              />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis dataKey="status" tick={{ fontSize: 11, fill: axisColor }} interval={0} angle={-20} textAnchor="end" height={55} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, "Broj"]} />
               <Bar dataKey="broj" radius={[6, 6, 0, 0]}>
                 {potencijaliChartData.map((d, i) => (
                   <Cell key={i} fill={STATUS_HEX[d.status] || "#94a3b8"} />
@@ -140,12 +148,12 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
-            <Building2 size={15} className="text-slate-400" /> Kupci po statusu licence
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
+            <Building2 size={15} className="text-slate-400 dark:text-slate-500" /> Kupci po statusu licence
           </h3>
           {licencaChartData.length === 0 ? (
-            <p className="text-sm text-slate-400 py-16 text-center">Nema podataka o licencama.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 py-16 text-center">Nema podataka o licencama.</p>
           ) : (
             <div className="flex items-center gap-4">
               <ResponsiveContainer width="60%" height={220}>
@@ -155,17 +163,17 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
                       <Cell key={i} fill={LICENCA_HEX[d.name]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
+                  <Tooltip contentStyle={tooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">
                 {licencaChartData.map((d) => (
                   <div key={d.name} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-slate-600">
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-400 dark:text-slate-300">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: LICENCA_HEX[d.name] }} />
                       {d.name}
                     </span>
-                    <span className="font-semibold text-slate-800">{d.value}</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{d.value}</span>
                   </div>
                 ))}
               </div>
@@ -175,29 +183,29 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-              <Bell size={15} className="text-slate-400" /> Podsjetnici (narednih 7 dana)
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <Bell size={15} className="text-slate-400 dark:text-slate-500" /> Podsjetnici (narednih 7 dana)
             </h3>
-            <button onClick={() => setTab("podsjetnici")} className="text-xs text-teal-600 font-medium hover:underline flex items-center gap-0.5">
+            <button onClick={() => setTab("podsjetnici")} className="text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline flex items-center gap-0.5">
               Svi <ChevronRight size={13} />
             </button>
           </div>
           {podsjetnici.length === 0 ? (
-            <p className="text-sm text-slate-400 py-6 text-center">Nema podsjetnika u narednih 7 dana.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Nema podsjetnika u narednih 7 dana.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {podsjetnici.slice(0, 6).map((r) => {
                 const u = reminderUrgency(r.datum);
                 return (
                   <li key={r.tip + r.id} className="py-2.5 flex items-center gap-3">
                     <span className={"w-2 h-2 rounded-full shrink-0 " + u.dotCls} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-700 truncate">
+                      <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
                         <span className="font-medium">{r.firma}</span> — {r.opis || "podsjetnik"}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
                         {r.tip} · {r.kolega} · {fmtDate(r.datum)}
                       </p>
                     </div>
@@ -209,28 +217,28 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-              <AlertTriangle size={15} className="text-slate-400" /> Licence koje ističu
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <AlertTriangle size={15} className="text-slate-400 dark:text-slate-500" /> Licence koje ističu
             </h3>
-            <button onClick={() => setTab("kupci")} className="text-xs text-teal-600 font-medium hover:underline flex items-center gap-0.5">
+            <button onClick={() => setTab("kupci")} className="text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline flex items-center gap-0.5">
               Svi kupci <ChevronRight size={13} />
             </button>
           </div>
           {isticuLicence.length === 0 ? (
-            <p className="text-sm text-slate-400 py-6 text-center">Nema licenci koje ističu u narednih 30 dana.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Nema licenci koje ističu u narednih 30 dana.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {isticuLicence.slice(0, 6).map((k) => {
                 const s = licenseStatus(k.end_date);
                 return (
                   <li key={k.id} className="py-2.5 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-700 truncate">
+                      <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
                         <span className="font-medium">{k.naziv_firme}</span> — {k.naziv_proizvoda}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
                         {k.grad} · ističe {fmtDate(k.end_date)}
                       </p>
                     </div>
@@ -243,21 +251,21 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-5 mt-4">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-1.5">
-          <Wrench size={15} className="text-slate-400" /> Posljednja tehnička podrška
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mt-4 transition-colors duration-150">
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-1.5">
+          <Wrench size={15} className="text-slate-400 dark:text-slate-500" /> Posljednja tehnička podrška
         </h3>
         {podrska.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">Još nema unesenih intervencija podrške.</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Još nema unesenih intervencija podrške.</p>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {[...podrska].sort((a, b) => new Date(b.datum) - new Date(a.datum)).slice(0, 5).map((s) => (
               <li key={s.id} className="py-2.5 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-700 truncate">
+                  <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
                     <span className="font-medium">{s.firma}</span> — {s.opis}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
                     {s.tehnicar} · {fmtDate(s.datum)}
                   </p>
                 </div>
@@ -269,6 +277,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab }) {
     </div>
   );
 }
+
 
 /* ====================================================================== */
 /*  POTENCIJALI                                                            */
@@ -377,17 +386,17 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Dodatni kontakti</span>
+          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dodatni kontakti</span>
           <button type="button" onClick={addKontakt} className="text-xs text-teal-600 font-medium hover:underline flex items-center gap-1">
             <Plus size={13} /> Dodaj kontakt
           </button>
         </div>
         {dodatniKontakti.length === 0 ? (
-          <p className="text-xs text-slate-400">Nema dodatnih kontakata — koristi ovo ako firma ima više osoba za kontakt.</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">Nema dodatnih kontakata — koristi ovo ako firma ima više osoba za kontakt.</p>
         ) : (
           <div className="space-y-2">
             {dodatniKontakti.map((k, idx) => (
-              <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-start bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-start bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 rounded-lg p-2.5">
                 <input className={inputCls} placeholder="Ime i prezime" value={k.ime || ""} onChange={(e) => updateKontakt(idx, "ime", e.target.value)} />
                 <input className={inputCls} placeholder="Telefon" value={k.telefon || ""} onChange={(e) => updateKontakt(idx, "telefon", e.target.value)} />
                 <input className={inputCls} placeholder="Email" value={k.email || ""} onChange={(e) => updateKontakt(idx, "email", e.target.value)} />
@@ -412,7 +421,7 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
         </Field>
       </div>
       <Field label="Unio / ažurira">
-        <input className={inputCls + " bg-slate-50"} value={currentUser || "— odaberite se u vrhu stranice —"} disabled />
+        <input className={inputCls + " bg-slate-50 dark:bg-slate-800/60"} value={currentUser || "— odaberite se u vrhu stranice —"} disabled />
       </Field>
       {initial && initial.datum_dobijanja && (
         <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 -mt-2 mb-4">
@@ -486,7 +495,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         </select>
         <div />
         <button
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
@@ -501,11 +510,11 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         <EmptyState icon={Target} title="Nema unesenih potencijala" subtitle="Dodaj ručno ili uvezi postojeću bazu potencijala iz Excela."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi potencijal</button>} />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                   <th className="px-4 py-2.5">Firma</th>
                   <th className="px-4 py-2.5">Grad</th>
                   <th className="px-4 py-2.5">Država</th>
@@ -514,16 +523,16 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filtered.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/70 cursor-pointer" onClick={() => setEditing(p)}>
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{p.naziv_firme}</td>
-                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.grad || "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.drzava || "—"}</td>
+                  <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(p)}>
+                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">{p.naziv_firme}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.grad || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.drzava || "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[p.status] || "bg-slate-100 text-slate-600")}>{p.status}</span>
+                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[p.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{p.status}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{p.kolega || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.kolega || "—"}</td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-end">
                         <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
@@ -693,7 +702,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
@@ -707,21 +716,21 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
       ) : (
         <div className="space-y-2.5">
           {filtered.map((l) => (
-            <div key={l.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-colors">
+            <div key={l.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-slate-900">{l.naziv_firme}</h4>
-                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[l.status] || "bg-slate-100 text-slate-600")}>{l.status}</span>
-                    {l.izvor && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-200">{l.izvor}</span>}
+                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{l.naziv_firme}</h4>
+                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[l.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{l.status}</span>
+                    {l.izvor && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{l.izvor}</span>}
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-1.5">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
                     {(l.grad || l.drzava) && <span className="flex items-center gap-1"><MapPin size={12} /> {[l.grad, l.drzava].filter(Boolean).join(", ")}</span>}
                     {l.kontakt_osoba && <span className="flex items-center gap-1"><User size={12} /> {l.kontakt_osoba}</span>}
                     {l.telefon && <span className="flex items-center gap-1"><Phone size={12} /> {l.telefon}</span>}
-                    <span className="flex items-center gap-1 font-medium text-slate-600"><User size={12} /> {l.kolega}</span>
+                    <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-400"><User size={12} /> {l.kolega}</span>
                   </div>
-                  {l.napomena && <p className="text-sm text-slate-600 mt-2">{l.napomena}</p>}
+                  {l.napomena && <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{l.napomena}</p>}
                   {l.podsjetnik_datum && (
                     <div className="mt-2 inline-flex items-center gap-1.5">
                       <span className={"text-xs px-2 py-0.5 rounded-full flex items-center gap-1 " + reminderUrgency(l.podsjetnik_datum).cls}>
@@ -842,12 +851,12 @@ function SortableHeader({ label, field, sortField, sortDir, onSort, align }) {
   const active = sortField === field;
   return (
     <th
-      className={"px-4 py-2.5 cursor-pointer select-none hover:text-slate-800 " + (align === "center" ? "text-center" : "")}
+      className={"px-4 py-2.5 cursor-pointer select-none hover:text-slate-800 dark:text-slate-200 " + (align === "center" ? "text-center" : "")}
       onClick={() => onSort(field)}
     >
       <span className="inline-flex items-center gap-1">
         {label}
-        {active ? (sortDir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300" />}
+        {active ? (sortDir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300 dark:text-slate-600" />}
       </span>
     </th>
   );
@@ -859,18 +868,18 @@ function Pagination({ page, setPage, pageSize, setPageSize, total }) {
   const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
   const to = Math.min(clampedPage * pageSize, total);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-      <div className="flex items-center gap-2 text-sm text-slate-500">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50">
+      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
         <span>Prikaz po strani:</span>
         <select
-          className="text-sm rounded-lg border border-slate-300 px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
           value={pageSize}
           onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
         >
           {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </div>
-      <div className="flex items-center gap-3 text-sm text-slate-500">
+      <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
         <span>{total === 0 ? "0 rezultata" : `${from}–${to} od ${total}`}</span>
         <div className="flex items-center gap-1">
           <button className={btnGhostIcon} disabled={clampedPage <= 1} onClick={() => setPage(clampedPage - 1)}>
@@ -964,14 +973,14 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi / mjesečno ažuriranje</button>
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
         </button>
         {canDelete && (
           <button
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
             onClick={() => setShowDeleteAll(true)}
             disabled={data.length === 0}
           >
@@ -985,11 +994,11 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
         <EmptyState icon={Building2} title="Nema unesenih kupaca" subtitle="Dodaj ručno ili uvezi tabelu postojećih kupaca i licenci."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvog kupca</button>} />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                   <SortableHeader label="Firma" field="naziv_firme" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <SortableHeader label="Grad / Država" field="grad" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-2.5">Adresa</th>
@@ -1002,29 +1011,29 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageData.map((k) => {
                   const s = licenseStatus(k.end_date);
                   return (
-                    <tr key={k.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-2.5 font-medium text-slate-800">
+                    <tr key={k.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                      <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
                         {k.naziv_firme}
-                        <div className="text-xs text-slate-400 font-normal"><MetaLine record={k} /></div>
+                        <div className="text-xs text-slate-400 dark:text-slate-500 font-normal"><MetaLine record={k} /></div>
                       </td>
-                      <td className="px-4 py-2.5 text-slate-600">
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
                         {k.grad && <div>{k.grad}</div>}
-                        {k.drzava && <div className="text-xs text-slate-400">{k.drzava}</div>}
+                        {k.drzava && <div className="text-xs text-slate-400 dark:text-slate-500">{k.drzava}</div>}
                         {!k.grad && !k.drzava && "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-500 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-600">
+                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
                         {k.naziv_proizvoda || "—"}
-                        {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400">{k.naziv_proizvoda_2}</div>}
+                        {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400 dark:text-slate-500">{k.naziv_proizvoda_2}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-slate-500 font-mono text-xs whitespace-nowrap">{k.serijski_broj || "—"}</td>
-                      <td className="px-2 py-2.5 text-center text-slate-600 whitespace-nowrap">{k.broj_licenci ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(k.start_date)}</td>
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(k.end_date)}</td>
+                      <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400 font-mono text-xs whitespace-nowrap">{k.serijski_broj || "—"}</td>
+                      <td className="px-2 py-2.5 text-center text-slate-600 dark:text-slate-400 whitespace-nowrap">{k.broj_licenci ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(k.start_date)}</td>
+                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(k.end_date)}</td>
                       <td className="px-4 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + s.cls}>{s.label}</span></td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1 justify-end">
@@ -1201,16 +1210,16 @@ export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete
       ) : (
         <div className="space-y-2.5">
           {filtered.map((s) => (
-            <div key={s.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-colors">
+            <div key={s.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-slate-900">{s.firma}</h4>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1"><Calendar size={11} /> {fmtDate(s.datum)}</span>
+                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{s.firma}</h4>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center gap-1"><Calendar size={11} /> {fmtDate(s.datum)}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 flex items-center gap-1"><Wrench size={11} /> {s.tehnicar}</span>
                   </div>
-                  <p className="text-sm text-slate-700 mt-2">{s.opis}</p>
-                  {s.napomena && <p className="text-sm text-slate-500 mt-1">{s.napomena}</p>}
+                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-2">{s.opis}</p>
+                  {s.napomena && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{s.napomena}</p>}
                   <MetaLine record={s} />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -1248,8 +1257,8 @@ export function PodsjetniciTab({ potencijali, lidovi, onClear }) {
           {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
         </select>
         {fKolega !== "Svi" && (
-          <span className="text-sm text-slate-500">
-            {items.length} {items.length === 1 ? "podsjetnik" : "podsjetnika"} za <span className="font-medium text-slate-700">{fKolega}</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            {items.length} {items.length === 1 ? "podsjetnik" : "podsjetnika"} za <span className="font-medium text-slate-700 dark:text-slate-300">{fKolega}</span>
           </span>
         )}
       </Toolbar>
@@ -1261,18 +1270,18 @@ export function PodsjetniciTab({ potencijali, lidovi, onClear }) {
           subtitle="Podsjetnike dodaješ direktno na potencijalu ili leadu (poziv, sastanak, follow-up)."
         />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((r) => {
             const u = reminderUrgency(r.datum);
             return (
               <div key={r.tip + r.id} className="p-4 flex items-center gap-3">
                 <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + u.dotCls} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-800">
+                  <p className="text-sm text-slate-800 dark:text-slate-200">
                     <span className="font-semibold">{r.firma}</span>{" "}
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 ml-1">{r.tip}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ml-1">{r.tip}</span>
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">{r.opis || "Podsjetnik"} · zadužen: {r.kolega} · {fmtDate(r.datum)}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.opis || "Podsjetnik"} · zadužen: {r.kolega} · {fmtDate(r.datum)}</p>
                 </div>
                 <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + u.cls}>{u.label}</span>
                 <button className={btnGhostIcon} title="Označi kao obavljeno" onClick={() => onClear(r)}>
