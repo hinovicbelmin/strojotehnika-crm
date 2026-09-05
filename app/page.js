@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock,
+  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -38,6 +38,7 @@ export default function HomePage() {
   const [tab, setTab] = useState("pregled");
   const [navOpen, setNavOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
+  const [theme, setTheme] = useState("light");
 
   const [potencijali, setPotencijali] = useState([]);
   const [lidovi, setLidovi] = useState([]);
@@ -95,6 +96,20 @@ export default function HomePage() {
     if (!dataReady) return;
     idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast });
   }, [dataReady, potencijali, lidovi, kupci, podrska, forecast]);
+
+  // Tema (svijetla/tamna) — pamti se po uređaju/browseru
+  useEffect(() => {
+    const saved = localStorage.getItem("crm_theme") || "light";
+    setTheme(saved);
+    document.documentElement.classList.toggle("dark", saved === "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("crm_theme", next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+  };
 
   const chooseUser = (name) => {
     setCurrentUser(name);
@@ -258,10 +273,10 @@ export default function HomePage() {
 
   if (checkingAuth || !session) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-full h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Provjera prijave...</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Provjera prijave...</p>
         </div>
       </div>
     );
@@ -269,10 +284,10 @@ export default function HomePage() {
 
   if (loadingData) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-full h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Učitavanje CRM podataka...</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Učitavanje CRM podataka...</p>
         </div>
       </div>
     );
@@ -281,9 +296,9 @@ export default function HomePage() {
   const ActiveIcon = TABS.find((t) => t.id === tab)?.icon || Home;
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 flex text-slate-800">
+    <div className="w-full min-h-screen bg-slate-50 dark:bg-slate-950 flex text-slate-800 dark:text-slate-200 transition-colors duration-200">
       {/* Sidebar */}
-      <aside className={"bg-slate-900 text-slate-300 w-60 shrink-0 flex-col " + (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex")}>
+      <aside className={"bg-slate-900 dark:bg-slate-950 text-slate-300 w-60 shrink-0 flex-col border-r border-transparent dark:border-slate-800 " + (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex")}>
         <div className="px-5 py-5 border-b border-slate-800">
           <img src="/logo.png" alt="Strojotehnika" className="h-10 w-auto" />
           <p className="text-xs text-slate-400 mt-2">CRM · Prodaja · Podrška · Marketing</p>
@@ -298,7 +313,7 @@ export default function HomePage() {
                 key={t.id}
                 onClick={() => { setTab(t.id); setNavOpen(false); }}
                 className={
-                  "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors " +
+                  "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 " +
                   (restricted
                     ? "text-slate-600 hover:bg-slate-800/40"
                     : active
@@ -314,7 +329,7 @@ export default function HomePage() {
           })}
         </nav>
         <div className="px-2 pb-3">
-          <button onClick={signOut} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors">
+          <button onClick={signOut} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors duration-150">
             <LogOut size={16} /> Odjava
           </button>
         </div>
@@ -325,17 +340,24 @@ export default function HomePage() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 transition-colors duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <button className="md:hidden p-1.5 rounded-md hover:bg-slate-100" onClick={() => setNavOpen(true)}>
+            <button className="md:hidden p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setNavOpen(true)}>
               <ActiveIcon size={18} />
             </button>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight truncate">{TABS.find((t) => t.id === tab)?.label}</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight truncate">{TABS.find((t) => t.id === tab)?.label}</h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-slate-400 hidden sm:inline">Ja sam:</span>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150"
+              title={theme === "dark" ? "Prebaci na svijetlu temu" : "Prebaci na tamnu temu"}
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline">Ja sam:</span>
             <select
-              className="text-sm rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors duration-150"
               value={currentUser}
               onChange={(e) => chooseUser(e.target.value)}
             >
@@ -346,26 +368,26 @@ export default function HomePage() {
         </header>
 
         {!currentUser && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-800 flex items-center gap-1.5">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/40 px-6 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
             <AlertTriangle size={13} /> Odaberi svoje ime gore desno da bi se ispravno bilježilo ko unosi/ažurira podatke.
           </div>
         )}
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {isTehnicar && TECH_RESTRICTED_TABS.includes(tab) ? (
-            <div className="flex flex-col items-center justify-center text-center py-24 px-6 border border-dashed border-slate-300 rounded-xl bg-white">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                <Lock size={22} className="text-slate-400" />
+            <div className="flex flex-col items-center justify-center text-center py-24 px-6 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <Lock size={22} className="text-slate-400 dark:text-slate-500" />
               </div>
-              <p className="text-base font-semibold text-slate-700">Nemate odobrenje za pristup ovom tabu</p>
-              <p className="text-sm text-slate-400 mt-1 max-w-sm">
+              <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Nemate odobrenje za pristup ovom tabu</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 max-w-sm">
                 Ova sekcija je dostupna samo kolegama iz prodaje i marketinga. Ako mislite da je ovo greška, javite se administratoru CRM-a.
               </p>
             </div>
           ) : (
             <>
               {tab === "pregled" && (
-                <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} />
+                <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} theme={theme} />
               )}
               {tab === "potencijali" && (
                 <PotencijaliTab
@@ -421,6 +443,7 @@ export default function HomePage() {
                   onDelete={deleteForecast}
                   onBulkAdd={bulkAddForecast}
                   onLinkToKupac={linkForecastToKupac}
+                  theme={theme}
                 />
               )}
               {tab === "podsjetnici" && (
