@@ -285,9 +285,7 @@ export default function HomePage() {
       {/* Sidebar */}
       <aside className={"bg-slate-900 text-slate-300 w-60 shrink-0 flex-col " + (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex")}>
         <div className="px-5 py-5 border-b border-slate-800">
-          <div className="bg-white rounded-lg px-3 py-2 inline-block">
-            <img src="/logo.png" alt="Strojotehnika" className="h-6 w-auto" />
-          </div>
+          <img src="/logo.png" alt="Strojotehnika" className="h-10 w-auto" />
           <p className="text-xs text-slate-400 mt-2">CRM · Prodaja · Podrška · Marketing</p>
         </div>
         <nav className="flex-1 py-3 px-2 space-y-0.5">
