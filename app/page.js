@@ -2,11 +2,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart,
+  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
-  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, todayStr,
+  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, todayStr, getColleagueDept,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
@@ -23,6 +23,9 @@ const TABS = [
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
+
+// Tabovi kojima tehničari nemaju pristup (vidljivi, ali "zaleđeni")
+const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi"];
 
 const CACHE_KEY = "crm_data_cache_v1";
 
@@ -97,6 +100,8 @@ export default function HomePage() {
     setCurrentUser(name);
     localStorage.setItem("crm_trenutni_korisnik", name);
   };
+
+  const isTehnicar = getColleagueDept(currentUser) === "Tehnička podrška";
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -189,6 +194,27 @@ export default function HomePage() {
     await deleteRow("forecast", id);
     setForecast((prev) => prev.filter((f) => f.id !== id));
   };
+  const bulkAddForecast = async (rows) => {
+    const inserted = await bulkInsert("forecast", rows);
+    setForecast((prev) => [...inserted, ...prev]);
+  };
+  // Kad Forecast stavka postane "Dobijen" — kreira ili ažurira odgovarajući zapis u Kupcima
+  const linkForecastToKupac = async (entry) => {
+    const match = kupci.find((k) => k.naziv_firme === entry.kupac && k.naziv_proizvoda === entry.softver);
+    const ts = new Date().toISOString();
+    const payload = {
+      naziv_firme: entry.kupac,
+      naziv_proizvoda: entry.softver || "",
+      broj_licenci: entry.broj_licenci || null,
+      napomena: `Automatski kreirano/ažurirano iz Forecasta (${entry.mjesec})`,
+      updated_by: currentUser || "Forecast", updated_at: ts,
+    };
+    if (match) {
+      await updateKupac(match.id, payload);
+    } else {
+      await addKupac({ ...payload, created_by: currentUser || "Forecast", created_at: ts });
+    }
+  };
   // Svaki red iz fajla je UVIJEK poseban zapis (bez spajanja/upsert-a po serijskom broju).
   // Napomena: ako se isti fajl uveze ponovo (npr. mjesečno), stariji zapisi ostaju —
   // za čist mjesečni presjek, prije uvoza obrišite stare zapise (Supabase → SQL Editor → DELETE FROM kupci;)
@@ -259,24 +285,32 @@ export default function HomePage() {
       {/* Sidebar */}
       <aside className={"bg-slate-900 text-slate-300 w-60 shrink-0 flex-col " + (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex")}>
         <div className="px-5 py-5 border-b border-slate-800">
-          <p className="text-white font-bold text-lg tracking-tight">CRM</p>
-          <p className="text-xs text-slate-400 mt-0.5">Prodaja · Podrška · Marketing</p>
+          <div className="bg-white rounded-lg px-3 py-2 inline-block">
+            <img src="/logo.png" alt="Strojotehnika" className="h-6 w-auto" />
+          </div>
+          <p className="text-xs text-slate-400 mt-2">CRM · Prodaja · Podrška · Marketing</p>
         </div>
         <nav className="flex-1 py-3 px-2 space-y-0.5">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
+            const restricted = isTehnicar && TECH_RESTRICTED_TABS.includes(t.id);
             return (
               <button
                 key={t.id}
                 onClick={() => { setTab(t.id); setNavOpen(false); }}
                 className={
                   "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors " +
-                  (active ? "bg-slate-800 text-white border-l-2 border-teal-400 pl-2.5" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200")
+                  (restricted
+                    ? "text-slate-600 hover:bg-slate-800/40"
+                    : active
+                    ? "bg-slate-800 text-white border-l-2 border-teal-400 pl-2.5"
+                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200")
                 }
               >
                 <Icon size={16} />
                 {t.label}
+                {restricted && <Lock size={12} className="ml-auto shrink-0" />}
               </button>
             );
           })}
@@ -320,64 +354,81 @@ export default function HomePage() {
         )}
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {tab === "pregled" && (
-            <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} />
-          )}
-          {tab === "potencijali" && (
-            <PotencijaliTab
-              data={potencijali}
-              currentUser={currentUser}
-              onAdd={addPotencijal}
-              onUpdate={updatePotencijal}
-              onDelete={deletePotencijal}
-              onBulkImport={bulkImportPotencijali}
-            />
-          )}
-          {tab === "lidovi" && (
-            <LidoviTab
-              data={lidovi}
-              currentUser={currentUser}
-              onAdd={addLead}
-              onUpdate={updateLead}
-              onDelete={deleteLead}
-              onBulkImport={bulkImportLidovi}
-              onConvert={convertLead}
-            />
-          )}
-          {tab === "kupci" && (
-            <KupciTab
-              data={kupci}
-              currentUser={currentUser}
-              onAdd={addKupac}
-              onUpdate={updateKupac}
-              onDelete={deleteKupac}
-              onBulkImportKupci={bulkImportKupci}
-              onDeleteAll={deleteAllKupci}
-            />
-          )}
-          {tab === "podrska" && (
-            <PodrskaTab
-              data={podrska}
-              kupci={kupci}
-              currentUser={currentUser}
-              onAdd={addPodrska}
-              onUpdate={updatePodrska}
-              onDelete={deletePodrska}
-            />
-          )}
-          {tab === "forecast" && (
-            <ForecastTab
-              data={forecast}
-              potencijali={potencijali}
-              kupci={kupci}
-              currentUser={currentUser}
-              onAdd={addForecast}
-              onUpdate={updateForecast}
-              onDelete={deleteForecast}
-            />
-          )}
-          {tab === "podsjetnici" && (
-            <PodsjetniciTab potencijali={potencijali} lidovi={lidovi} onClear={clearReminder} />
+          {isTehnicar && TECH_RESTRICTED_TABS.includes(tab) ? (
+            <div className="flex flex-col items-center justify-center text-center py-24 px-6 border border-dashed border-slate-300 rounded-xl bg-white">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                <Lock size={22} className="text-slate-400" />
+              </div>
+              <p className="text-base font-semibold text-slate-700">Nemate odobrenje za pristup ovom tabu</p>
+              <p className="text-sm text-slate-400 mt-1 max-w-sm">
+                Ova sekcija je dostupna samo kolegama iz prodaje i marketinga. Ako mislite da je ovo greška, javite se administratoru CRM-a.
+              </p>
+            </div>
+          ) : (
+            <>
+              {tab === "pregled" && (
+                <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} />
+              )}
+              {tab === "potencijali" && (
+                <PotencijaliTab
+                  data={potencijali}
+                  currentUser={currentUser}
+                  onAdd={addPotencijal}
+                  onUpdate={updatePotencijal}
+                  onDelete={deletePotencijal}
+                  onBulkImport={bulkImportPotencijali}
+                />
+              )}
+              {tab === "lidovi" && (
+                <LidoviTab
+                  data={lidovi}
+                  currentUser={currentUser}
+                  onAdd={addLead}
+                  onUpdate={updateLead}
+                  onDelete={deleteLead}
+                  onBulkImport={bulkImportLidovi}
+                  onConvert={convertLead}
+                />
+              )}
+              {tab === "kupci" && (
+                <KupciTab
+                  data={kupci}
+                  currentUser={currentUser}
+                  onAdd={addKupac}
+                  onUpdate={updateKupac}
+                  onDelete={deleteKupac}
+                  onBulkImportKupci={bulkImportKupci}
+                  onDeleteAll={deleteAllKupci}
+                  canDelete={!isTehnicar}
+                />
+              )}
+              {tab === "podrska" && (
+                <PodrskaTab
+                  data={podrska}
+                  kupci={kupci}
+                  currentUser={currentUser}
+                  onAdd={addPodrska}
+                  onUpdate={updatePodrska}
+                  onDelete={deletePodrska}
+                />
+              )}
+              {tab === "forecast" && (
+                <ForecastTab
+                  data={forecast}
+                  potencijali={potencijali}
+                  kupci={kupci}
+                  currentUser={currentUser}
+                  onAdd={addForecast}
+                  onUpdate={updateForecast}
+                  onDelete={deleteForecast}
+                  onBulkAdd={bulkAddForecast}
+                  onLinkToKupac={linkForecastToKupac}
+                />
+              )}
+              {tab === "podsjetnici" && (
+                <PodsjetniciTab potencijali={potencijali} lidovi={lidovi} onClear={clearReminder} />
+              )}
+            </>
           )}
         </main>
       </div>
