@@ -11,13 +11,13 @@ export function Modal({ title, onClose, children, wide }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/70 p-4 backdrop-blur-[2px]" onClick={onClose}>
       <div
-        className={(wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white rounded-2xl shadow-2xl max-h-[85vh] flex flex-col"}
+        className={(wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-h-[85vh] flex flex-col border border-transparent dark:border-slate-700"}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
           <button onClick={onClose} className={btnGhostIcon}>
             <X size={18} />
           </button>
@@ -31,23 +31,23 @@ export function Modal({ title, onClose, children, wide }) {
 export function Field({ label, children, required, hint }) {
   return (
     <label className="block mb-4">
-      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-        {label} {required && <span className="text-red-500">*</span>}
+      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+        {label} {required && <span className="text-red-500 dark:text-red-400">*</span>}
       </span>
       {children}
-      {hint && <span className="block text-xs text-slate-400 mt-1">{hint}</span>}
+      {hint && <span className="block text-xs text-slate-400 dark:text-slate-500 mt-1">{hint}</span>}
     </label>
   );
 }
 
 export function EmptyState({ icon: Icon, title, subtitle, action }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-16 px-6 border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
-      <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-        <Icon size={20} className="text-slate-400" />
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-800/20">
+      <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+        <Icon size={20} className="text-slate-400 dark:text-slate-500" />
       </div>
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      {subtitle && <p className="text-sm text-slate-400 mt-1 max-w-sm">{subtitle}</p>}
+      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{title}</p>
+      {subtitle && <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 max-w-sm">{subtitle}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -60,7 +60,7 @@ export function Toolbar({ children }) {
 export function SearchBox({ value, onChange, placeholder }) {
   return (
     <div className="relative flex-1 min-w-[180px]">
-      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -73,14 +73,14 @@ export function SearchBox({ value, onChange, placeholder }) {
 
 export function MetaLine({ record }) {
   return (
-    <div className="text-xs text-slate-400 mt-2 flex flex-wrap gap-x-3 gap-y-0.5">
+    <div className="text-xs text-slate-400 dark:text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-0.5">
       <span>
-        Kreirao: <span className="text-slate-500 font-medium">{record.created_by || "—"}</span>
+        Kreirao: <span className="text-slate-500 dark:text-slate-400 font-medium">{record.created_by || "—"}</span>
         {record.created_at ? ` (${fmtDate(record.created_at.slice ? record.created_at.slice(0, 10) : record.created_at)})` : ""}
       </span>
       {(record.updated_by || record.updated_at) && (
         <span>
-          Zadnja izmjena: <span className="text-slate-500 font-medium">{record.updated_by || "—"}</span>
+          Zadnja izmjena: <span className="text-slate-500 dark:text-slate-400 font-medium">{record.updated_by || "—"}</span>
           {record.updated_at ? ` (${fmtDate(record.updated_at.slice ? record.updated_at.slice(0, 10) : record.updated_at)})` : ""}
         </span>
       )}
@@ -137,25 +137,25 @@ export function ImportModal({ title, columns, onClose, onImport }) {
 
   return (
     <Modal title={title} onClose={onClose} wide>
-      <div className="flex gap-2 mb-4 border-b border-slate-200">
+      <div className="flex gap-2 mb-4 border-b border-slate-200 dark:border-slate-700">
         <button
-          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px " + (mode === "file" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700")}
+          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors duration-150 " + (mode === "file" ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
           onClick={() => setMode("file")}
         >
           <FileSpreadsheet size={15} /> Uvezi fajl
         </button>
         <button
-          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px " + (mode === "paste" ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700")}
+          className={"flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors duration-150 " + (mode === "paste" ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
           onClick={() => setMode("paste")}
         >
           <ClipboardPaste size={15} /> Zalijepi iz Excela
         </button>
       </div>
 
-      <p className="text-sm text-slate-500 mb-3">Kolone trebaju biti tim redoslijedom:</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Kolone trebaju biti tim redoslijedom:</p>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {columns.map((c, i) => (
-          <span key={i} className="text-xs bg-slate-100 text-slate-600 rounded px-2 py-0.5">
+          <span key={i} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded px-2 py-0.5">
             {i + 1}. {c}
           </span>
         ))}
@@ -163,14 +163,14 @@ export function ImportModal({ title, columns, onClose, onImport }) {
 
       {mode === "file" ? (
         <div>
-          <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl py-8 px-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors">
-            <FileSpreadsheet size={24} className="text-slate-400" />
-            <span className="text-sm text-slate-600 font-medium">{fileName || "Kliknite da odaberete .xlsx / .xls / .csv fajl"}</span>
-            <span className="text-xs text-slate-400">ili prevucite fajl ovdje</span>
+          <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl py-8 px-4 cursor-pointer hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-colors duration-150">
+            <FileSpreadsheet size={24} className="text-slate-400 dark:text-slate-500" />
+            <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">{fileName || "Kliknite da odaberete .xlsx / .xls / .csv fajl"}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">ili prevucite fajl ovdje</span>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
           </label>
-          {fileError && <p className="text-xs text-amber-600 mt-2">{fileError}</p>}
-          <label className="flex items-center gap-2 mt-3 text-sm text-slate-600">
+          {fileError && <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{fileError}</p>}
+          <label className="flex items-center gap-2 mt-3 text-sm text-slate-600 dark:text-slate-300">
             <input type="checkbox" checked={skipHeader} onChange={(e) => setSkipHeader(e.target.checked)} />
             Prvi red u fajlu je zaglavlje (nazivi kolona) — preskoči ga
           </label>
@@ -185,9 +185,9 @@ export function ImportModal({ title, columns, onClose, onImport }) {
         />
       )}
 
-      <p className="text-xs text-slate-400 mt-2">Prepoznato redova za uvoz: {rows.length}</p>
+      <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Prepoznato redova za uvoz: {rows.length}</p>
       {rows.length > 2000 && (
-        <p className="text-xs text-amber-600 mt-1">
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
           Ovo je neuobičajeno velik broj — provjerite da fajl stvarno ima toliko kupaca prije uvoza (moguće je da Excel čita prazne formatirane redove).
         </p>
       )}
@@ -220,9 +220,9 @@ export function DangerConfirmModal({ title, message, confirmWord = "OBRIŠI", co
   const [busy, setBusy] = useState(false);
   return (
     <Modal title={title} onClose={onClose}>
-      <p className="text-sm text-slate-600 mb-4">{message}</p>
-      <p className="text-sm text-slate-600 mb-2">
-        Da potvrdite, upišite <span className="font-mono font-semibold text-red-600">{confirmWord}</span> u polje ispod:
+      <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">{message}</p>
+      <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
+        Da potvrdite, upišite <span className="font-mono font-semibold text-red-600 dark:text-red-400">{confirmWord}</span> u polje ispod:
       </p>
       <input className={inputCls} value={text} onChange={(e) => setText(e.target.value)} placeholder={confirmWord} autoFocus />
       <div className="flex justify-end gap-2 mt-5">
@@ -230,7 +230,7 @@ export function DangerConfirmModal({ title, message, confirmWord = "OBRIŠI", co
           Otkaži
         </button>
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
           disabled={text !== confirmWord || busy}
           onClick={async () => {
             setBusy(true);
@@ -262,7 +262,7 @@ export function ConfirmDelete({ label, onConfirm }) {
   return (
     <span className="inline-flex items-center gap-1">
       <button
-        className="text-xs text-red-600 font-semibold hover:underline disabled:opacity-50"
+        className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline disabled:opacity-50"
         disabled={busy}
         onClick={async () => {
           setBusy(true);
@@ -273,7 +273,7 @@ export function ConfirmDelete({ label, onConfirm }) {
       >
         Obriši {label}?
       </button>
-      <button className="text-xs text-slate-400 hover:underline" onClick={() => setConfirming(false)}>
+      <button className="text-xs text-slate-400 dark:text-slate-500 hover:underline" onClick={() => setConfirming(false)}>
         ne
       </button>
     </span>
