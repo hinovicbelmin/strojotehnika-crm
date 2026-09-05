@@ -8,7 +8,7 @@ import {
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible,
+  todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal } from "./ui";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -284,7 +284,11 @@ function CountrySelect({ value, onChange }) {
   );
 }
 
-function PotencijalForm({ initial, currentUser, onSave, onClose }) {
+function normNaziv(s) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9čćžšđ]/gi, "");
+}
+
+function PotencijalForm({ initial, currentUser, existingList, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
       naziv_firme: "", grad: "", drzava: "", djelatnost: "", kontakt_osoba: "", telefon: "", email: "",
@@ -294,6 +298,19 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
   );
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const duplicateMatch = useMemo(() => {
+    const target = normNaziv(f.naziv_firme);
+    if (target.length < 3) return null;
+    return (
+      (existingList || []).find((p) => {
+        if (initial && p.id === initial.id) return false;
+        const pn = normNaziv(p.naziv_firme);
+        if (!pn) return false;
+        return pn === target || pn.includes(target) || target.includes(pn);
+      }) || null
+    );
+  }, [f.naziv_firme, existingList, initial]);
 
   const dodatniKontakti = f.dodatni_kontakti || [];
   const addKontakt = () => setF({ ...f, dodatni_kontakti: [...dodatniKontakti, { ime: "", telefon: "", email: "", napomena: "" }] });
@@ -350,6 +367,13 @@ function PotencijalForm({ initial, currentUser, onSave, onClose }) {
         <Field label="Telefon"><input className={inputCls} value={f.telefon || ""} onChange={set("telefon")} /></Field>
         <Field label="Email"><input className={inputCls} value={f.email || ""} onChange={set("email")} /></Field>
       </div>
+
+      {duplicateMatch && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 flex items-start gap-1.5">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          Moguć duplikat — već postoji <strong className="mx-1">{duplicateMatch.naziv_firme}</strong> (kolega: {duplicateMatch.kolega || "—"}, status: {duplicateMatch.status}). Možete i dalje sačuvati ako je ovo zaista druga firma.
+        </p>
+      )}
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-1.5">
@@ -433,27 +457,12 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
       "Kolega", "Status", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
       "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
     ];
-    const esc = (val) => {
-      const s = val == null ? "" : String(val);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
-    const rows = filtered.map((p) =>
-      [
-        p.naziv_firme, p.grad, p.drzava, p.djelatnost, p.kontakt_osoba, p.telefon, p.email,
-        p.kolega, p.status, p.napomena, p.podsjetnik_datum, p.podsjetnik_opis,
-        p.created_by, p.created_at, p.updated_by, p.updated_at,
-      ].map(esc).join(",")
-    );
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `potencijali_${todayStr()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const rows = filtered.map((p) => [
+      p.naziv_firme, p.grad, p.drzava, p.djelatnost, p.kontakt_osoba, p.telefon, p.email,
+      p.kolega, p.status, p.napomena, p.podsjetnik_datum, p.podsjetnik_opis,
+      p.created_by, p.created_at, p.updated_by, p.updated_at,
+    ]);
+    downloadCSV(`potencijali_${todayStr()}.csv`, headers, rows);
   };
 
   return (
@@ -530,7 +539,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
       )}
 
       {(showNew || editing) && (
-        <PotencijalForm initial={editing} currentUser={currentUser} onSave={handleSave}
+        <PotencijalForm initial={editing} currentUser={currentUser} existingList={data} onSave={handleSave}
           onClose={() => { setShowNew(false); setEditing(null); }} />
       )}
 
@@ -561,7 +570,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
 /*  LIDOVI                                                                  */
 /* ====================================================================== */
 
-function LeadForm({ initial, currentUser, onSave, onClose }) {
+function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
       naziv_firme: "", grad: "", drzava: "", kontakt_osoba: "", telefon: "", email: "",
@@ -571,6 +580,19 @@ function LeadForm({ initial, currentUser, onSave, onClose }) {
   );
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const duplicateMatch = useMemo(() => {
+    const target = normNaziv(f.naziv_firme);
+    if (target.length < 3) return null;
+    return (
+      (existingList || []).find((l) => {
+        if (initial && l.id === initial.id) return false;
+        const ln = normNaziv(l.naziv_firme);
+        if (!ln) return false;
+        return ln === target || ln.includes(target) || target.includes(ln);
+      }) || null
+    );
+  }, [f.naziv_firme, existingList, initial]);
   const submit = async () => {
     if (!f.naziv_firme.trim() || !f.kolega || !currentUser) return;
     setBusy(true);
@@ -608,6 +630,12 @@ function LeadForm({ initial, currentUser, onSave, onClose }) {
           </select>
         </Field>
       </div>
+      {duplicateMatch && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 flex items-start gap-1.5">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          Moguć duplikat — već postoji lead <strong className="mx-1">{duplicateMatch.naziv_firme}</strong> (kolega: {duplicateMatch.kolega || "—"}, status: {duplicateMatch.status}).
+        </p>
+      )}
       <Field label="Napomena"><textarea className={inputCls} rows={3} value={f.napomena || ""} onChange={set("napomena")} /></Field>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Podsjetnik — datum"><input type="date" className={inputCls} value={f.podsjetnik_datum || ""} onChange={set("podsjetnik_datum")} /></Field>
@@ -641,6 +669,20 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
     else await onAdd(payload);
   };
 
+  const exportCSV = () => {
+    const headers = [
+      "Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor",
+      "Kolega", "Status", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
+      "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
+    ];
+    const rows = filtered.map((l) => [
+      l.naziv_firme, l.grad, l.drzava, l.kontakt_osoba, l.telefon, l.email, l.izvor,
+      l.kolega, l.status, l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
+      l.created_by, l.created_at, l.updated_by, l.updated_at,
+    ]);
+    downloadCSV(`lidovi_${todayStr()}.csv`, headers, rows);
+  };
+
   return (
     <div>
       <Toolbar>
@@ -650,6 +692,12 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
           {LEAD_STATUSI.map((s) => <option key={s}>{s}</option>)}
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          onClick={exportCSV}
+        >
+          <Download size={15} /> Izvoz CSV
+        </button>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj lead</button>
       </Toolbar>
 
@@ -699,7 +747,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
       )}
 
       {(showNew || editing) && (
-        <LeadForm initial={editing} currentUser={currentUser} onSave={handleSave}
+        <LeadForm initial={editing} currentUser={currentUser} existingList={data} onSave={handleSave}
           onClose={() => { setShowNew(false); setEditing(null); }} />
       )}
 
@@ -838,7 +886,7 @@ function Pagination({ page, setPage, pageSize, setPageSize, total }) {
   );
 }
 
-export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll }) {
+export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true }) {
   const [q, setQ] = useState("");
   const [fLicenca, setFLicenca] = useState("Sve");
   const [editing, setEditing] = useState(null);
@@ -893,6 +941,20 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
     else await onAdd(payload);
   };
 
+  const exportCSV = () => {
+    const headers = [
+      "Naziv firme", "Grad", "Država", "Adresa", "Poštanski broj", "Serijski broj", "Broj licenci",
+      "Naziv proizvoda", "Naziv proizvoda 2", "Revenue Type", "Status (izvorni)", "Start datum", "End datum",
+      "Napomena", "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
+    ];
+    const rows = sorted.map((k) => [
+      k.naziv_firme, k.grad, k.drzava, k.adresa, k.postanski_broj, k.serijski_broj, k.broj_licenci,
+      k.naziv_proizvoda, k.naziv_proizvoda_2, k.revenue_type, k.izvorni_status, k.start_date, k.end_date,
+      k.napomena, k.created_by, k.created_at, k.updated_by, k.updated_at,
+    ]);
+    downloadCSV(`kupci_${todayStr()}.csv`, headers, rows);
+  };
+
   return (
     <div>
       <Toolbar>
@@ -902,12 +964,20 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
         </select>
         <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi / mjesečno ažuriranje</button>
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-          onClick={() => setShowDeleteAll(true)}
-          disabled={data.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          onClick={exportCSV}
         >
-          <Trash2 size={15} /> Obriši sve kupce
+          <Download size={15} /> Izvoz CSV
         </button>
+        {canDelete && (
+          <button
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            onClick={() => setShowDeleteAll(true)}
+            disabled={data.length === 0}
+          >
+            <Trash2 size={15} /> Obriši sve kupce
+          </button>
+        )}
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj kupca</button>
       </Toolbar>
 
@@ -959,7 +1029,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1 justify-end">
                           <button className={btnGhostIcon} onClick={() => setEditing(k)} title="Uredi"><Pencil size={14} /></button>
-                          <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />
+                          {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
                         </div>
                       </td>
                     </tr>
