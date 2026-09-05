@@ -115,7 +115,7 @@ function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci,
 /*  GRAFIKON TRENDA (zadnjih 12 mjeseci)                                  */
 /* ---------------------------------------------------------------------- */
 
-function TrendChart({ data }) {
+function TrendChart({ data, theme }) {
   const months = [];
   const now = new Date();
   for (let i = 11; i >= 0; i--) {
@@ -130,14 +130,25 @@ function TrendChart({ data }) {
     return { mjesec: fmtMonth(m), ukupno, prodano, ponderisano };
   });
 
+  const isDark = theme === "dark";
+  const axisColor = isDark ? "#94a3b8" : "#64748b";
+  const gridColor = isDark ? "#334155" : "#f1f5f9";
+  const tooltipStyle = {
+    borderRadius: 10,
+    border: isDark ? "1px solid #334155" : "1px solid #e2e8f0",
+    fontSize: 13,
+    backgroundColor: isDark ? "#1e293b" : "#ffffff",
+    color: isDark ? "#e2e8f0" : "#0f172a",
+  };
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-        <XAxis dataKey="mjesec" tick={{ fontSize: 11, fill: "#64748b" }} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} />
-        <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+        <XAxis dataKey="mjesec" tick={{ fontSize: 11, fill: axisColor }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12, color: axisColor }} />
         <Bar dataKey="ukupno" name="Potencijalne licence" fill="#94a3b8" radius={[4, 4, 0, 0]} />
         <Bar dataKey="ponderisano" name="Ponderisana procjena" fill="#3b82f6" radius={[4, 4, 0, 0]} />
         <Bar dataKey="prodano" name="Prodano" fill="#22c55e" radius={[4, 4, 0, 0]} />
@@ -150,7 +161,7 @@ function TrendChart({ data }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onLinkToKupac }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onLinkToKupac, theme }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -244,9 +255,9 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5">
           <button className={btnGhostIcon} onClick={() => shiftMonth(-1)} title="Prethodni mjesec"><ChevronLeft size={16} /></button>
-          <input type="month" className="text-sm font-semibold text-slate-800 border-none focus:outline-none focus:ring-0 bg-transparent" value={mjesec} onChange={(e) => setMjesec(e.target.value)} />
+          <input type="month" className="text-sm font-semibold text-slate-800 dark:text-slate-200 border-none focus:outline-none focus:ring-0 bg-transparent" value={mjesec} onChange={(e) => setMjesec(e.target.value)} />
           <button className={btnGhostIcon} onClick={() => shiftMonth(1)} title="Sljedeći mjesec"><ChevronRight size={16} /></button>
         </div>
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}>
@@ -255,7 +266,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         <button className={btnSecondary} onClick={handleCopyFromPrevMonth} disabled={!currentUser || copyBusy}>
           <Copy size={15} /> {copyBusy ? "Kopiram..." : `Kopiraj otvorene iz ${fmtMonth(prevMjesec)}`}
         </button>
-        {copyMsg && <span className="text-xs text-slate-500">{copyMsg}</span>}
+        {copyMsg && <span className="text-xs text-slate-500 dark:text-slate-400">{copyMsg}</span>}
       </div>
 
       <div
@@ -277,7 +288,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </select>
         <div />
         <button
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
@@ -285,25 +296,25 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs mb-1">
             <Target size={14} /> Ukupno potencijalnih licenci ({fmtMonth(mjesec)})
           </div>
-          <div className="text-2xl font-bold text-slate-900">{ukupnoLicenci}</div>
+          <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{ukupnoLicenci}</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center gap-2 text-blue-600 text-xs mb-1">
             <TrendingUp size={14} /> Ponderisana procjena
           </div>
           <div className="text-2xl font-bold text-blue-700">{ponderisanoLicenci}</div>
-          <div className="text-xs text-slate-400 mt-0.5">na osnovu % šanse po statusu</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">na osnovu % šanse po statusu</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center gap-2 text-green-600 text-xs mb-1">
             <TrendingUp size={14} /> Prodano ({fmtMonth(mjesec)})
           </div>
           <div className="text-2xl font-bold text-green-700">
-            {prodanoLicenci} <span className="text-sm font-normal text-slate-400">/ {ukupnoLicenci}</span>
+            {prodanoLicenci} <span className="text-sm font-normal text-slate-400 dark:text-slate-500">/ {ukupnoLicenci}</span>
           </div>
         </div>
       </div>
@@ -316,11 +327,11 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu stavku</button>}
         />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden mb-6">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                   <th className="px-4 py-2.5">Prodavač</th>
                   <th className="px-4 py-2.5">Kupac</th>
                   <th className="px-4 py-2.5">Softver</th>
@@ -330,19 +341,19 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filtered.map((f) => (
-                  <tr key={f.id} className="hover:bg-slate-50/70 cursor-pointer" onClick={() => setEditing(f)}>
-                    <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap">{f.prodavac || "—"}</td>
-                    <td className="px-4 py-2.5 font-medium text-slate-800">
+                  <tr key={f.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(f)}>
+                    <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300 whitespace-nowrap">{f.prodavac || "—"}</td>
+                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
                       {f.kupac}
-                      {f.napomena && <div className="text-xs text-slate-400 font-normal">{f.napomena}</div>}
+                      {f.napomena && <div className="text-xs text-slate-400 dark:text-slate-500 font-normal">{f.napomena}</div>}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{f.softver || "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{f.tip_licence || "—"}</td>
-                    <td className="px-4 py-2.5 text-center text-slate-600">{f.broj_licenci ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.softver || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.tip_licence || "—"}</td>
+                    <td className="px-4 py-2.5 text-center text-slate-600 dark:text-slate-400">{f.broj_licenci ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[f.status] || "bg-slate-100 text-slate-600")}>{f.status}</span>
+                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
                     </td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-end">
@@ -358,11 +369,11 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-slate-400" /> Trend — potencijalne vs ponderisane vs prodane licence (zadnjih 12 mjeseci)
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
+          <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Trend — potencijalne vs ponderisane vs prodane licence (zadnjih 12 mjeseci)
         </h3>
-        <TrendChart data={data} />
+        <TrendChart data={data} theme={theme} />
       </div>
 
       {(showNew || editing) && (
@@ -379,7 +390,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
 
       {linkPrompt && (
         <Modal title="Povezati sa Kupcima?" onClose={() => setLinkPrompt(null)}>
-          <p className="text-sm text-slate-600 mb-4 flex items-start gap-2">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex items-start gap-2">
             <Link2 size={16} className="text-teal-600 shrink-0 mt-0.5" />
             <span>
               Stavka za <strong>{linkPrompt.kupac}</strong> je označena kao <strong className="text-green-700">Dobijeno</strong>.
