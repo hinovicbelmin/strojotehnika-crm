@@ -88,7 +88,7 @@ export function MetaLine({ record }) {
   );
 }
 
-export function ImportModal({ title, columns, onClose, onImport }) {
+export function ImportModal({ title, columns, existingNames, onClose, onImport }) {
   const [mode, setMode] = useState("file"); // "file" | "paste"
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -110,6 +110,19 @@ export function ImportModal({ title, columns, onClose, onImport }) {
     const base = skipHeader ? fileRows.slice(1) : fileRows;
     return base.filter((r) => r[0] && String(r[0]).trim() !== "");
   }, [mode, pastedRows, fileRows, skipHeader]);
+
+  const existingSet = useMemo(() => {
+    return new Set((existingNames || []).map((n) => (n || "").trim().toLowerCase()).filter(Boolean));
+  }, [existingNames]);
+
+  const previewStats = useMemo(() => {
+    let existing = 0;
+    for (const r of rows) {
+      const n = (r[0] || "").trim().toLowerCase();
+      if (n && existingSet.has(n)) existing++;
+    }
+    return { existing, novo: rows.length - existing };
+  }, [rows, existingSet]);
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -191,6 +204,38 @@ export function ImportModal({ title, columns, onClose, onImport }) {
           Ovo je neuobičajeno velik broj — provjerite da fajl stvarno ima toliko kupaca prije uvoza (moguće je da Excel čita prazne formatirane redove).
         </p>
       )}
+
+      {rows.length > 0 && existingNames && (
+        <div className="mt-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Pregled prije uvoza</p>
+          <div className="flex gap-4 text-sm mb-2">
+            <span className="flex items-center gap-1.5 text-teal-700 dark:text-teal-400">
+              <span className="w-2 h-2 rounded-full bg-teal-500" /> {previewStats.novo} novih firmi
+            </span>
+            <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> {previewStats.existing} već postoji u sistemu
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Svaki red iz fajla se uvijek dodaje kao poseban zapis (bez spajanja) — oznaka "već postoji" je samo informativna, da primijetite eventualne duplikate prije potvrde.
+          </p>
+          <div className="mt-2 max-h-32 overflow-y-auto border-t border-slate-200 dark:border-slate-700 pt-2 space-y-1">
+            {rows.slice(0, 100).map((r, i) => {
+              const isExisting = existingSet.has((r[0] || "").trim().toLowerCase());
+              return (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600 dark:text-slate-300 truncate">{r[0]}</span>
+                  <span className={"px-1.5 py-0.5 rounded shrink-0 ml-2 " + (isExisting ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400")}>
+                    {isExisting ? "već postoji" : "novo"}
+                  </span>
+                </div>
+              );
+            })}
+            {rows.length > 100 && <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">... i još {rows.length - 100} redova</p>}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 mt-5">
         <button className={btnSecondary} onClick={onClose}>
           Otkaži
@@ -246,6 +291,19 @@ export function DangerConfirmModal({ title, message, confirmWord = "OBRIŠI", co
         </button>
       </div>
     </Modal>
+  );
+}
+
+export function BulkActionBar({ count, onClear, children }) {
+  if (count === 0) return null;
+  return (
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 bg-teal-600 text-white rounded-lg px-4 py-2.5 mb-3 shadow-sm">
+      <span className="text-sm font-medium">{count} odabrano</span>
+      <div className="flex flex-wrap items-center gap-2 flex-1">{children}</div>
+      <button onClick={onClear} className="text-sm text-teal-100 hover:text-white hover:underline">
+        Poništi izbor
+      </button>
+    </div>
   );
 }
 
