@@ -2,17 +2,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon,
+  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, LayoutList, Rows3,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
-  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, todayStr, getColleagueDept,
+  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
   PregledTab, PotencijaliTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
 } from "../components/tabs";
 import { ForecastTab } from "../components/forecast";
+import { CompanyProfileModal } from "../components/companyProfile";
+import { AppSkeleton } from "../components/skeleton";
 
 const TABS = [
   { id: "pregled", label: "Pregled", icon: Home },
@@ -39,6 +41,8 @@ export default function HomePage() {
   const [navOpen, setNavOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
   const [theme, setTheme] = useState("light");
+  const [density, setDensity] = useState("comfortable");
+  const [viewingCompany, setViewingCompany] = useState(null);
 
   const [potencijali, setPotencijali] = useState([]);
   const [lidovi, setLidovi] = useState([]);
@@ -102,6 +106,8 @@ export default function HomePage() {
     const saved = localStorage.getItem("crm_theme") || "light";
     setTheme(saved);
     document.documentElement.classList.toggle("dark", saved === "dark");
+    const savedDensity = localStorage.getItem("crm_density") || "comfortable";
+    setDensity(savedDensity);
   }, []);
 
   const toggleTheme = () => {
@@ -109,6 +115,12 @@ export default function HomePage() {
     setTheme(next);
     localStorage.setItem("crm_theme", next);
     document.documentElement.classList.toggle("dark", next === "dark");
+  };
+
+  const toggleDensity = () => {
+    const next = density === "compact" ? "comfortable" : "compact";
+    setDensity(next);
+    localStorage.setItem("crm_density", next);
   };
 
   const chooseUser = (name) => {
@@ -141,6 +153,16 @@ export default function HomePage() {
     const inserted = await bulkInsert("potencijali", rows);
     setPotencijali((prev) => [...inserted, ...prev]);
   };
+  const bulkUpdatePotencijali = async (ids, patch) => {
+    const updated = await bulkUpdateRows("potencijali", ids, patch);
+    const updatedMap = new Map(updated.map((u) => [u.id, u]));
+    setPotencijali((prev) => prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id) : p)));
+  };
+  const bulkDeletePotencijali = async (ids) => {
+    await bulkDeleteRows("potencijali", ids);
+    const idSet = new Set(ids);
+    setPotencijali((prev) => prev.filter((p) => !idSet.has(p.id)));
+  };
 
   /* ---------------- Lidovi handlers ---------------- */
   const addLead = async (payload) => {
@@ -158,6 +180,16 @@ export default function HomePage() {
   const bulkImportLidovi = async (rows) => {
     const inserted = await bulkInsert("lidovi", rows);
     setLidovi((prev) => [...inserted, ...prev]);
+  };
+  const bulkUpdateLidovi = async (ids, patch) => {
+    const updated = await bulkUpdateRows("lidovi", ids, patch);
+    const updatedMap = new Map(updated.map((u) => [u.id, u]));
+    setLidovi((prev) => prev.map((l) => (updatedMap.has(l.id) ? updatedMap.get(l.id) : l)));
+  };
+  const bulkDeleteLidovi = async (ids) => {
+    await bulkDeleteRows("lidovi", ids);
+    const idSet = new Set(ids);
+    setLidovi((prev) => prev.filter((l) => !idSet.has(l.id)));
   };
   const convertLead = async (lead) => {
     const novi = {
@@ -272,25 +304,11 @@ export default function HomePage() {
   };
 
   if (checkingAuth || !session) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">Provjera prijave...</p>
-        </div>
-      </div>
-    );
+    return <AppSkeleton />;
   }
 
   if (loadingData) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">Učitavanje CRM podataka...</p>
-        </div>
-      </div>
-    );
+    return <AppSkeleton />;
   }
 
   const ActiveIcon = TABS.find((t) => t.id === tab)?.icon || Home;
@@ -349,6 +367,13 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
+              onClick={toggleDensity}
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150 hidden sm:inline-flex"
+              title={density === "compact" ? "Prebaci na udoban prikaz" : "Prebaci na kompaktan prikaz"}
+            >
+              {density === "compact" ? <Rows3 size={17} /> : <LayoutList size={17} />}
+            </button>
+            <button
               onClick={toggleTheme}
               className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150"
               title={theme === "dark" ? "Prebaci na svijetlu temu" : "Prebaci na tamnu temu"}
@@ -373,7 +398,7 @@ export default function HomePage() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className={"flex-1 overflow-y-auto p-4 sm:p-6 " + (density === "compact" ? "density-compact" : "")}>
           {isTehnicar && TECH_RESTRICTED_TABS.includes(tab) ? (
             <div className="flex flex-col items-center justify-center text-center py-24 px-6 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900">
               <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
@@ -385,7 +410,7 @@ export default function HomePage() {
               </p>
             </div>
           ) : (
-            <>
+            <div key={tab} className="tab-transition">
               {tab === "pregled" && (
                 <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} theme={theme} />
               )}
@@ -397,6 +422,9 @@ export default function HomePage() {
                   onUpdate={updatePotencijal}
                   onDelete={deletePotencijal}
                   onBulkImport={bulkImportPotencijali}
+                  onBulkUpdate={bulkUpdatePotencijali}
+                  onBulkDelete={bulkDeletePotencijali}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "lidovi" && (
@@ -408,6 +436,9 @@ export default function HomePage() {
                   onDelete={deleteLead}
                   onBulkImport={bulkImportLidovi}
                   onConvert={convertLead}
+                  onBulkUpdate={bulkUpdateLidovi}
+                  onBulkDelete={bulkDeleteLidovi}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "kupci" && (
@@ -420,6 +451,7 @@ export default function HomePage() {
                   onBulkImportKupci={bulkImportKupci}
                   onDeleteAll={deleteAllKupci}
                   canDelete={!isTehnicar}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "podrska" && (
@@ -430,6 +462,7 @@ export default function HomePage() {
                   onAdd={addPodrska}
                   onUpdate={updatePodrska}
                   onDelete={deletePodrska}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "forecast" && (
@@ -444,15 +477,27 @@ export default function HomePage() {
                   onBulkAdd={bulkAddForecast}
                   onLinkToKupac={linkForecastToKupac}
                   theme={theme}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "podsjetnici" && (
                 <PodsjetniciTab potencijali={potencijali} lidovi={lidovi} onClear={clearReminder} />
               )}
-            </>
+            </div>
           )}
         </main>
       </div>
+
+      {viewingCompany && (
+        <CompanyProfileModal
+          name={viewingCompany}
+          potencijali={potencijali}
+          kupci={kupci}
+          podrska={podrska}
+          forecast={forecast}
+          onClose={() => setViewingCompany(null)}
+        />
+      )}
     </div>
   );
 }
