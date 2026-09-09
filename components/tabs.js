@@ -3,14 +3,14 @@ import { useState, useMemo } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
-  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download,
+  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink, Square, CheckSquare,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal } from "./ui";
+import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar } from "./ui";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ====================================================================== */
@@ -438,7 +438,7 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
   );
 }
 
-export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport }) {
+export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fKolega, setFKolega] = useState("Sve kolege");
   const [fStatus, setFStatus] = useState("Svi statusi");
@@ -446,6 +446,21 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkKolega, setBulkKolega] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (ids) => {
+    setSelected((prev) => (prev.size === ids.length ? new Set() : new Set(ids)));
+  };
 
   const filtered = data.filter((p) => {
     if (fKolega !== "Sve kolege" && p.kolega !== fKolega) return false;
@@ -506,45 +521,132 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj potencijala</button>
       </Toolbar>
 
+      {selected.size > 0 && (
+        <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
+          <select className="text-sm rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-white placeholder:text-teal-100" value={bulkKolega} onChange={(e) => setBulkKolega(e.target.value)}>
+            <option value="" className="text-slate-800">— odaberi kolegu —</option>
+            {COLLEAGUE_NAMES.map((n) => <option key={n} className="text-slate-800">{n}</option>)}
+          </select>
+          <button
+            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 disabled:opacity-50"
+            disabled={!bulkKolega || bulkBusy}
+            onClick={async () => {
+              setBulkBusy(true);
+              try {
+                await onBulkUpdate(Array.from(selected), { kolega: bulkKolega, updated_by: currentUser || "Grupna izmjena", updated_at: new Date().toISOString() });
+                setSelected(new Set());
+                setBulkKolega("");
+              } finally {
+                setBulkBusy(false);
+              }
+            }}
+          >
+            Promijeni kolegu
+          </button>
+          <button
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            disabled={bulkBusy}
+            onClick={async () => {
+              if (!window.confirm(`Obrisati ${selected.size} odabranih potencijala?`)) return;
+              setBulkBusy(true);
+              try {
+                await onBulkDelete(Array.from(selected));
+                setSelected(new Set());
+              } finally {
+                setBulkBusy(false);
+              }
+            }}
+          >
+            Obriši odabrane
+          </button>
+        </BulkActionBar>
+      )}
+
       {filtered.length === 0 ? (
         <EmptyState icon={Target} title="Nema unesenih potencijala" subtitle="Dodaj ručno ili uvezi postojeću bazu potencijala iz Excela."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi potencijal</button>} />
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                  <th className="px-4 py-2.5">Firma</th>
-                  <th className="px-4 py-2.5">Grad</th>
-                  <th className="px-4 py-2.5">Država</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5">Kolega</th>
-                  <th className="px-4 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(p)}>
-                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">{p.naziv_firme}</td>
-                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.grad || "—"}</td>
-                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.drzava || "—"}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[p.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{p.status}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.kolega || "—"}</td>
-                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1 justify-end">
-                        <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
-                        <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
-                      </div>
-                    </td>
+        <>
+          {/* Desktop tabela */}
+          <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                    <th className="px-3 py-2.5 w-8">
+                      <button onClick={() => toggleSelectAll(filtered.map((p) => p.id))} className={btnGhostIcon} title="Odaberi sve">
+                        {selected.size === filtered.length ? <CheckSquare size={15} /> : <Square size={15} />}
+                      </button>
+                    </th>
+                    <th className="px-4 py-2.5">Firma</th>
+                    <th className="px-4 py-2.5">Grad</th>
+                    <th className="px-4 py-2.5">Država</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Kolega</th>
+                    <th className="px-4 py-2.5"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filtered.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(p)}>
+                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => toggleSelect(p.id)} className={btnGhostIcon}>
+                          {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
+                        <span className="inline-flex items-center gap-1.5">
+                          {p.naziv_firme}
+                          {onViewCompany && (
+                            <button onClick={(e) => { e.stopPropagation(); onViewCompany(p.naziv_firme); }} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                              <ExternalLink size={12} />
+                            </button>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.grad || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.drzava || "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[p.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{p.status}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.kolega || "—"}</td>
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 justify-end">
+                          <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
+                          <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobilne kartice */}
+          <div className="sm:hidden space-y-2.5">
+            {filtered.map((p) => (
+              <div key={p.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4" onClick={() => setEditing(p)}>
+                <div className="flex items-start justify-between gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); toggleSelect(p.id); }} className={btnGhostIcon + " -ml-1.5 mt-0.5"}>
+                    {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">{p.naziv_firme}</h4>
+                      <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[p.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{p.status}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{[p.grad, p.drzava].filter(Boolean).join(", ")} · {p.kolega || "—"}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
+                    <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {(showNew || editing) && (
@@ -556,6 +658,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         <ImportModal
           title="Uvezi bazu potencijala"
           columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Kolega", "Status", "Napomena"]}
+          existingNames={data.map((p) => p.naziv_firme)}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
             const novi = rows.map((r) => ({
@@ -660,12 +763,24 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
   );
 }
 
-export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onConvert }) {
+export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onConvert, onBulkUpdate, onBulkDelete, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fStatus, setFStatus] = useState("Svi");
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filtered = data.filter((l) => {
     if (fStatus !== "Svi" && l.status !== fStatus) return false;
@@ -710,6 +825,47 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
         <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj lead</button>
       </Toolbar>
 
+      {selected.size > 0 && (
+        <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
+          <select className="text-sm rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-white" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
+            <option value="" className="text-slate-800">— odaberi status —</option>
+            {LEAD_STATUSI.map((s) => <option key={s} className="text-slate-800">{s}</option>)}
+          </select>
+          <button
+            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 disabled:opacity-50"
+            disabled={!bulkStatus || bulkBusy}
+            onClick={async () => {
+              setBulkBusy(true);
+              try {
+                await onBulkUpdate(Array.from(selected), { status: bulkStatus, updated_by: currentUser || "Grupna izmjena", updated_at: new Date().toISOString() });
+                setSelected(new Set());
+                setBulkStatus("");
+              } finally {
+                setBulkBusy(false);
+              }
+            }}
+          >
+            Promijeni status
+          </button>
+          <button
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            disabled={bulkBusy}
+            onClick={async () => {
+              if (!window.confirm(`Obrisati ${selected.size} odabranih lidova?`)) return;
+              setBulkBusy(true);
+              try {
+                await onBulkDelete(Array.from(selected));
+                setSelected(new Set());
+              } finally {
+                setBulkBusy(false);
+              }
+            }}
+          >
+            Obriši odabrane
+          </button>
+        </BulkActionBar>
+      )}
+
       {filtered.length === 0 ? (
         <EmptyState icon={TrendingUp} title="Nema unesenih lidova" subtitle="Dodaj ručno ili uvezi generisanu bazu lidova."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi lead</button>} />
@@ -717,10 +873,19 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
         <div className="space-y-2.5">
           {filtered.map((l) => (
             <div key={l.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <button onClick={() => toggleSelect(l.id)} className={btnGhostIcon + " mt-0.5"}>
+                  {selected.has(l.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                </button>
+                <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-semibold text-slate-900 dark:text-slate-100">{l.naziv_firme}</h4>
+                    {onViewCompany && (
+                      <button onClick={() => onViewCompany(l.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                        <ExternalLink size={12} />
+                      </button>
+                    )}
                     <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[l.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{l.status}</span>
                     {l.izvor && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{l.izvor}</span>}
                   </div>
@@ -749,6 +914,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
                   <button className={btnGhostIcon} onClick={() => setEditing(l)} title="Uredi"><Pencil size={15} /></button>
                   <ConfirmDelete label={l.naziv_firme} onConfirm={() => onDelete(l.id)} />
                 </div>
+                </div>
               </div>
             </div>
           ))}
@@ -764,6 +930,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
         <ImportModal
           title="Uvezi bazu lidova"
           columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status"]}
+          existingNames={data.map((l) => l.naziv_firme)}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
             const novi = rows.map((r) => ({
@@ -895,7 +1062,7 @@ function Pagination({ page, setPage, pageSize, setPageSize, total }) {
   );
 }
 
-export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true }) {
+export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fLicenca, setFLicenca] = useState("Sve");
   const [editing, setEditing] = useState(null);
@@ -994,7 +1161,8 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
         <EmptyState icon={Building2} title="Nema unesenih kupaca" subtitle="Dodaj ručno ili uvezi tabelu postojećih kupaca i licenci."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvog kupca</button>} />
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+        <>
+        <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1017,7 +1185,14 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
                   return (
                     <tr key={k.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                       <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
-                        {k.naziv_firme}
+                        <span className="inline-flex items-center gap-1.5">
+                          {k.naziv_firme}
+                          {onViewCompany && (
+                            <button onClick={() => onViewCompany(k.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                              <ExternalLink size={12} />
+                            </button>
+                          )}
+                        </span>
                         <div className="text-xs text-slate-400 dark:text-slate-500 font-normal"><MetaLine record={k} /></div>
                       </td>
                       <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
@@ -1049,6 +1224,38 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
           </div>
           <Pagination page={currentPage} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={sorted.length} />
         </div>
+
+        {/* Mobilne kartice */}
+        <div className="sm:hidden space-y-2.5">
+          {pageData.map((k) => {
+            const s = licenseStatus(k.end_date);
+            return (
+              <div key={k.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">{k.naziv_firme}</h4>
+                      {onViewCompany && (
+                        <button onClick={() => onViewCompany(k.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                          <ExternalLink size={12} />
+                        </button>
+                      )}
+                      <span className={"text-xs px-2 py-0.5 rounded-full " + s.cls}>{s.label}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{k.naziv_proizvoda || "—"} · {[k.grad, k.drzava].filter(Boolean).join(", ")}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(k.start_date)} – {fmtDate(k.end_date)}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button className={btnGhostIcon} onClick={() => setEditing(k)} title="Uredi"><Pencil size={14} /></button>
+                    {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <Pagination page={currentPage} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={sorted.length} />
+        </div>
+        </>
       )}
 
       {(showNew || editing) && (
@@ -1059,6 +1266,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
       {showImport && (
         <ImportModal
           title="Uvezi / ažuriraj kupce (mjesečni export)"
+          existingNames={data.map((k) => k.naziv_firme)}
           columns={[
             "Final customer name", "Serial number", "Product name", "Product name 2",
             "License Qty", "Revenue Type", "Status", "Start Date", "Support End Date",
@@ -1164,7 +1372,7 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
   );
 }
 
-export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete }) {
+export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fFirma, setFFirma] = useState("Sve");
   const [fTeh, setFTeh] = useState("Svi");
@@ -1215,6 +1423,11 @@ export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-semibold text-slate-900 dark:text-slate-100">{s.firma}</h4>
+                    {onViewCompany && (
+                      <button onClick={() => onViewCompany(s.firma)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                        <ExternalLink size={12} />
+                      </button>
+                    )}
                     <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center gap-1"><Calendar size={11} /> {fmtDate(s.datum)}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 flex items-center gap-1"><Wrench size={11} /> {s.tehnicar}</span>
                   </div>
