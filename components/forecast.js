@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2 } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink } from "lucide-react";
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
@@ -161,7 +161,7 @@ function TrendChart({ data, theme }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onLinkToKupac, theme }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onLinkToKupac, theme, onViewCompany }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -327,7 +327,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu stavku</button>}
         />
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden mb-6">
+        <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden mb-6">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -346,7 +346,14 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                   <tr key={f.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(f)}>
                     <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300 whitespace-nowrap">{f.prodavac || "—"}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
-                      {f.kupac}
+                      <span className="inline-flex items-center gap-1.5">
+                        {f.kupac}
+                        {onViewCompany && (
+                          <button onClick={(e) => { e.stopPropagation(); onViewCompany(f.kupac); }} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                            <ExternalLink size={12} />
+                          </button>
+                        )}
+                      </span>
                       {f.napomena && <div className="text-xs text-slate-400 dark:text-slate-500 font-normal">{f.napomena}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.softver || "—"}</td>
@@ -366,6 +373,32 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Mobilne kartice */}
+        <div className="sm:hidden space-y-2.5 mb-6">
+          {filtered.map((f) => (
+            <div key={f.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4" onClick={() => setEditing(f)}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{f.kupac}</h4>
+                    {onViewCompany && (
+                      <button onClick={(e) => { e.stopPropagation(); onViewCompany(f.kupac); }} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
+                        <ExternalLink size={12} />
+                      </button>
+                    )}
+                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{f.prodavac || "—"} · {f.softver || "—"} {f.broj_licenci ? `· ${f.broj_licenci} lic.` : ""}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button className={btnGhostIcon} onClick={() => setEditing(f)} title="Uredi"><Pencil size={14} /></button>
+                  <ConfirmDelete label={f.kupac} onConfirm={() => onDelete(f.id)} />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
