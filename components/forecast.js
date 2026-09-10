@@ -327,6 +327,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu stavku</button>}
         />
       ) : (
+        <>
         <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden mb-6">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -400,6 +401,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
             </div>
           ))}
         </div>
+        </>
       )}
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
