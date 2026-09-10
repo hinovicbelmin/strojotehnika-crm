@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, LayoutList, Rows3,
+  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -371,7 +371,7 @@ export default function HomePage() {
               className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150 hidden sm:inline-flex"
               title={density === "compact" ? "Prebaci na udoban prikaz" : "Prebaci na kompaktan prikaz"}
             >
-              {density === "compact" ? <Rows3 size={17} /> : <LayoutList size={17} />}
+              {density === "compact" ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
             </button>
             <button
               onClick={toggleTheme}
