@@ -1096,7 +1096,22 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
   const sorted = useMemo(() => {
     const arr = [...filtered];
     const dir = sortDir === "asc" ? 1 : -1;
+    const query = q.trim().toLowerCase();
+
+    const relevance = (k) => {
+      if (!query) return 0;
+      const naziv = (k.naziv_firme || "").toLowerCase();
+      if (naziv.startsWith(query)) return 0; // naziv firme počinje sa pretragom - najrelevantnije
+      if (naziv.includes(query)) return 1; // naziv firme sadrži pretragu
+      return 2; // pretraga je pogodila neko drugo polje (proizvod, serijski broj, adresa...)
+    };
+
     arr.sort((a, b) => {
+      if (query) {
+        const ra = relevance(a);
+        const rb = relevance(b);
+        if (ra !== rb) return ra - rb;
+      }
       let va = a[sortField], vb = b[sortField];
       if (sortField === "broj_licenci") { va = Number(va) || 0; vb = Number(vb) || 0; return (va - vb) * dir; }
       va = (va || "").toString().toLowerCase();
@@ -1106,7 +1121,7 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
       return 0;
     });
     return arr;
-  }, [filtered, sortField, sortDir]);
+  }, [filtered, sortField, sortDir, q]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
