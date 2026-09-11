@@ -7,10 +7,26 @@ function norm(s) {
   return (s || "").trim().toLowerCase();
 }
 
+// Odredi naziv koji treba prikazati za licencu i da li se uopšte broji kao licenca:
+// - ako postoji manji naziv (naziv_proizvoda_2) i ne počinje sa "with" -> prikaži njega
+// - ako manji naziv počinje sa "with" -> ovo je dodatna komponenta unutar paketa, ne posebna licenca (isključi)
+// - ako manji naziv ne postoji -> prikaži glavni naziv (naziv_proizvoda)
+function licenseDisplayName(k) {
+  const sub = (k.naziv_proizvoda_2 || "").trim();
+  if (sub) {
+    if (/^with\b/i.test(sub)) return null;
+    return sub;
+  }
+  return k.naziv_proizvoda || "—";
+}
+
 export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, onClose }) {
   const target = norm(name);
   const potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
-  const licence = kupci.filter((k) => norm(k.naziv_firme) === target);
+  const licence = kupci
+    .filter((k) => norm(k.naziv_firme) === target)
+    .map((k) => ({ ...k, __displayName: licenseDisplayName(k) }))
+    .filter((k) => k.__displayName !== null);
   const istorija = podrska.filter((s) => norm(s.firma) === target).sort((a, b) => new Date(b.datum) - new Date(a.datum));
   const forecastStavke = (forecast || []).filter((f) => norm(f.kupac) === target).sort((a, b) => (a.mjesec < b.mjesec ? 1 : -1));
 
@@ -71,9 +87,9 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
               return (
                 <div key={k.id} className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">{k.naziv_proizvoda || "—"}</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{k.__displayName}</span>
                     <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">{k.broj_licenci ? `${k.broj_licenci} lic.` : ""}</span>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(k.start_date)} – {fmtDate(k.end_date)}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(k.start_date)} / {fmtDate(k.end_date)}</div>
                   </div>
                   <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + s.cls}>{s.label}</span>
                 </div>
