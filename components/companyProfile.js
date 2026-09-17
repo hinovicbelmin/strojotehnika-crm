@@ -1,6 +1,6 @@
 "use client";
-import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar } from "lucide-react";
-import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE } from "../lib/crm";
+import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer } from "lucide-react";
+import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr } from "../lib/crm";
 import { Modal } from "./ui";
 
 function norm(s) {
@@ -32,6 +32,21 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
 
   return (
     <Modal title={name} onClose={onClose} wide>
+      <div className="no-print flex justify-end mb-3 -mt-2">
+        <button
+          onClick={() => window.print()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        >
+          <Printer size={13} /> Izvezi kao PDF / Štampaj
+        </button>
+      </div>
+
+      <div className="print-area">
+      <div className="hidden print:block mb-4">
+        <h2 className="text-xl font-bold text-black">{name}</h2>
+        <p className="text-xs text-slate-500">360° pregled firme · generisano {fmtDate(todayStr())}</p>
+      </div>
+
       {/* Kontakt info */}
       <div className="mb-6">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
@@ -140,6 +155,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
             ))}
           </div>
         )}
+      </div>
       </div>
     </Modal>
   );
