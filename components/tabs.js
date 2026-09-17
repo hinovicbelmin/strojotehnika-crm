@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
@@ -29,7 +29,7 @@ const LICENCA_HEX = { Aktivno: "#22c55e", "Ističe uskoro": "#f59e0b", Isteklo: 
 
 function StatCard({ icon: Icon, label, value, accent, onClick }) {
   return (
-    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150">
+    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150">
       <div className="flex items-center justify-between mb-3">
         <div className={"w-9 h-9 rounded-lg flex items-center justify-center " + accent}>
           <Icon size={17} />
@@ -41,7 +41,7 @@ function StatCard({ icon: Icon, label, value, accent, onClick }) {
   );
 }
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme }) {
+export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme, onStatusClick, onLicenseClick }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
   const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
@@ -139,9 +139,13 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme 
               <XAxis dataKey="status" tick={{ fontSize: 11, fill: axisColor }} interval={0} angle={-20} textAnchor="end" height={55} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} />
               <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, "Broj"]} />
-              <Bar dataKey="broj" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="broj" radius={[6, 6, 0, 0]} cursor={onStatusClick ? "pointer" : "default"}>
                 {potencijaliChartData.map((d, i) => (
-                  <Cell key={i} fill={STATUS_HEX[d.status] || "#94a3b8"} />
+                  <Cell
+                    key={i}
+                    fill={STATUS_HEX[d.status] || "#94a3b8"}
+                    onClick={() => onStatusClick && d.broj > 0 && onStatusClick(d.status)}
+                  />
                 ))}
               </Bar>
             </BarChart>
@@ -158,9 +162,9 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme 
             <div className="flex items-center gap-4">
               <ResponsiveContainer width="60%" height={220}>
                 <PieChart>
-                  <Pie data={licencaChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                  <Pie data={licencaChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2} cursor={onLicenseClick ? "pointer" : "default"}>
                     {licencaChartData.map((d, i) => (
-                      <Cell key={i} fill={LICENCA_HEX[d.name]} />
+                      <Cell key={i} fill={LICENCA_HEX[d.name]} onClick={() => onLicenseClick && onLicenseClick(d.name)} />
                     ))}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle} />
@@ -438,7 +442,7 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
   );
 }
 
-export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany }) {
+export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed }) {
   const [q, setQ] = useState("");
   const [fKolega, setFKolega] = useState("Sve kolege");
   const [fStatus, setFStatus] = useState("Svi statusi");
@@ -449,6 +453,14 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
   const [selected, setSelected] = useState(new Set());
   const [bulkKolega, setBulkKolega] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => {
+    if (presetStatus) {
+      setFStatus(presetStatus);
+      onPresetConsumed && onPresetConsumed();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetStatus]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -872,7 +884,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
       ) : (
         <div className="space-y-2.5">
           {filtered.map((l) => (
-            <div key={l.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+            <div key={l.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md dark:hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-150">
               <div className="flex items-start gap-3">
                 <button onClick={() => toggleSelect(l.id)} className={btnGhostIcon + " mt-0.5"}>
                   {selected.has(l.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
@@ -1062,7 +1074,7 @@ function Pagination({ page, setPage, pageSize, setPageSize, total }) {
   );
 }
 
-export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany }) {
+export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany, presetLicenca, onPresetConsumed }) {
   const [q, setQ] = useState("");
   const [fLicenca, setFLicenca] = useState("Sve");
   const [editing, setEditing] = useState(null);
@@ -1074,6 +1086,15 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
+  useEffect(() => {
+    if (presetLicenca) {
+      setFLicenca(presetLicenca);
+      setPage(1);
+      onPresetConsumed && onPresetConsumed();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetLicenca]);
+
   const handleSort = (field) => {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortField(field); setSortDir("asc"); }
@@ -1084,9 +1105,9 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
     const query = q.trim().toLowerCase();
     return data.filter((k) => {
       if (query) {
-        const haystack = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa]
-          .filter(Boolean).join(" ").toLowerCase();
-        if (!haystack.includes(query)) return false;
+        const fields = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa];
+        const matches = fields.some((f) => (f || "").toString().toLowerCase().includes(query));
+        if (!matches) return false;
       }
       if (fLicenca !== "Sve" && licenseStatus(k.end_date).label !== fLicenca) return false;
       return true;
@@ -1433,7 +1454,7 @@ export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete
       ) : (
         <div className="space-y-2.5">
           {filtered.map((s) => (
-            <div key={s.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+            <div key={s.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md dark:hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-150">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
