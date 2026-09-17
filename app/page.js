@@ -15,6 +15,7 @@ import {
 import { ForecastTab } from "../components/forecast";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { AppSkeleton } from "../components/skeleton";
+import { ToastStack } from "../components/toast";
 
 const TABS = [
   { id: "pregled", label: "Pregled", icon: Home },
@@ -43,6 +44,8 @@ export default function HomePage() {
   const [theme, setTheme] = useState("light");
   const [density, setDensity] = useState("comfortable");
   const [viewingCompany, setViewingCompany] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [chartFilter, setChartFilter] = useState(null); // { tab: 'potencijali'|'kupci', value: string }
 
   const [potencijali, setPotencijali] = useState([]);
   const [lidovi, setLidovi] = useState([]);
@@ -136,171 +139,362 @@ export default function HomePage() {
     router.push("/login");
   };
 
+  /* ---------------- Toast / Undo infrastruktura ---------------- */
+  const dismissToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
+  const showToast = (message, type = "success") => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => dismissToast(id), 3200);
+  };
+  const showUndoToast = (message, onUndo) => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type: "success", actionLabel: "Poništi", onAction: onUndo }]);
+    setTimeout(() => dismissToast(id), 5200);
+  };
+  // Optimistički ukloni iz prikaza odmah, a stvarno brisanje iz baze izvrši tek nakon 5s (ako se ne poništi)
+  const scheduleUndoDelete = (label, restoreLocally, commitDelete) => {
+    let undone = false;
+    const timerId = setTimeout(async () => {
+      if (undone) return;
+      try {
+        await commitDelete();
+      } catch (e) {
+        console.error(e);
+        showToast(`Greška pri brisanju: ${label}`, "error");
+        restoreLocally();
+      }
+    }, 5000);
+    showUndoToast(`Obrisano: ${label}`, () => {
+      undone = true;
+      clearTimeout(timerId);
+      restoreLocally();
+    });
+  };
+
   /* ---------------- Potencijali handlers ---------------- */
   const addPotencijal = async (payload) => {
-    const rec = await insertRow("potencijali", payload);
-    setPotencijali((prev) => [rec, ...prev]);
+    try {
+      const rec = await insertRow("potencijali", payload);
+      setPotencijali((prev) => [rec, ...prev]);
+      showToast("Potencijal sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju potencijala", "error");
+      throw e;
+    }
   };
   const updatePotencijal = async (id, patch) => {
-    const rec = await updateRow("potencijali", id, patch);
-    setPotencijali((prev) => prev.map((p) => (p.id === id ? rec : p)));
+    try {
+      const rec = await updateRow("potencijali", id, patch);
+      setPotencijali((prev) => prev.map((p) => (p.id === id ? rec : p)));
+      showToast("Potencijal sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju potencijala", "error");
+      throw e;
+    }
   };
-  const deletePotencijal = async (id) => {
-    await deleteRow("potencijali", id);
+  const deletePotencijal = (id) => {
+    const item = potencijali.find((p) => p.id === id);
+    if (!item) return;
     setPotencijali((prev) => prev.filter((p) => p.id !== id));
+    scheduleUndoDelete(
+      item.naziv_firme || "potencijal",
+      () => setPotencijali((prev) => [item, ...prev]),
+      () => deleteRow("potencijali", id)
+    );
   };
   const bulkImportPotencijali = async (rows) => {
-    const inserted = await bulkInsert("potencijali", rows);
-    setPotencijali((prev) => [...inserted, ...prev]);
+    try {
+      const inserted = await bulkInsert("potencijali", rows);
+      setPotencijali((prev) => [...inserted, ...prev]);
+      showToast(`Uvezeno ${inserted.length} potencijala`);
+    } catch (e) {
+      showToast("Greška pri uvozu potencijala", "error");
+      throw e;
+    }
   };
   const bulkUpdatePotencijali = async (ids, patch) => {
-    const updated = await bulkUpdateRows("potencijali", ids, patch);
-    const updatedMap = new Map(updated.map((u) => [u.id, u]));
-    setPotencijali((prev) => prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id) : p)));
+    try {
+      const updated = await bulkUpdateRows("potencijali", ids, patch);
+      const updatedMap = new Map(updated.map((u) => [u.id, u]));
+      setPotencijali((prev) => prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id) : p)));
+      showToast(`Izmijenjeno ${updated.length} potencijala`);
+    } catch (e) {
+      showToast("Greška pri grupnoj izmjeni", "error");
+      throw e;
+    }
   };
-  const bulkDeletePotencijali = async (ids) => {
-    await bulkDeleteRows("potencijali", ids);
-    const idSet = new Set(ids);
-    setPotencijali((prev) => prev.filter((p) => !idSet.has(p.id)));
+  const bulkDeletePotencijali = (ids) => {
+    const items = potencijali.filter((p) => ids.includes(p.id));
+    if (items.length === 0) return;
+    setPotencijali((prev) => prev.filter((p) => !ids.includes(p.id)));
+    scheduleUndoDelete(
+      `${items.length} potencijala`,
+      () => setPotencijali((prev) => [...items, ...prev]),
+      () => bulkDeleteRows("potencijali", ids)
+    );
   };
 
   /* ---------------- Lidovi handlers ---------------- */
   const addLead = async (payload) => {
-    const rec = await insertRow("lidovi", payload);
-    setLidovi((prev) => [rec, ...prev]);
+    try {
+      const rec = await insertRow("lidovi", payload);
+      setLidovi((prev) => [rec, ...prev]);
+      showToast("Lead sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju leada", "error");
+      throw e;
+    }
   };
   const updateLead = async (id, patch) => {
-    const rec = await updateRow("lidovi", id, patch);
-    setLidovi((prev) => prev.map((l) => (l.id === id ? rec : l)));
+    try {
+      const rec = await updateRow("lidovi", id, patch);
+      setLidovi((prev) => prev.map((l) => (l.id === id ? rec : l)));
+      showToast("Lead sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju leada", "error");
+      throw e;
+    }
   };
-  const deleteLead = async (id) => {
-    await deleteRow("lidovi", id);
+  const deleteLead = (id) => {
+    const item = lidovi.find((l) => l.id === id);
+    if (!item) return;
     setLidovi((prev) => prev.filter((l) => l.id !== id));
+    scheduleUndoDelete(
+      item.naziv_firme || "lead",
+      () => setLidovi((prev) => [item, ...prev]),
+      () => deleteRow("lidovi", id)
+    );
   };
   const bulkImportLidovi = async (rows) => {
-    const inserted = await bulkInsert("lidovi", rows);
-    setLidovi((prev) => [...inserted, ...prev]);
+    try {
+      const inserted = await bulkInsert("lidovi", rows);
+      setLidovi((prev) => [...inserted, ...prev]);
+      showToast(`Uvezeno ${inserted.length} lidova`);
+    } catch (e) {
+      showToast("Greška pri uvozu lidova", "error");
+      throw e;
+    }
   };
   const bulkUpdateLidovi = async (ids, patch) => {
-    const updated = await bulkUpdateRows("lidovi", ids, patch);
-    const updatedMap = new Map(updated.map((u) => [u.id, u]));
-    setLidovi((prev) => prev.map((l) => (updatedMap.has(l.id) ? updatedMap.get(l.id) : l)));
+    try {
+      const updated = await bulkUpdateRows("lidovi", ids, patch);
+      const updatedMap = new Map(updated.map((u) => [u.id, u]));
+      setLidovi((prev) => prev.map((l) => (updatedMap.has(l.id) ? updatedMap.get(l.id) : l)));
+      showToast(`Izmijenjeno ${updated.length} lidova`);
+    } catch (e) {
+      showToast("Greška pri grupnoj izmjeni", "error");
+      throw e;
+    }
   };
-  const bulkDeleteLidovi = async (ids) => {
-    await bulkDeleteRows("lidovi", ids);
-    const idSet = new Set(ids);
-    setLidovi((prev) => prev.filter((l) => !idSet.has(l.id)));
+  const bulkDeleteLidovi = (ids) => {
+    const items = lidovi.filter((l) => ids.includes(l.id));
+    if (items.length === 0) return;
+    setLidovi((prev) => prev.filter((l) => !ids.includes(l.id)));
+    scheduleUndoDelete(
+      `${items.length} lidova`,
+      () => setLidovi((prev) => [...items, ...prev]),
+      () => bulkDeleteRows("lidovi", ids)
+    );
   };
   const convertLead = async (lead) => {
-    const novi = {
-      naziv_firme: lead.naziv_firme, grad: lead.grad, drzava: lead.drzava,
-      kontakt_osoba: lead.kontakt_osoba, telefon: lead.telefon, email: lead.email,
-      kolega: lead.kolega, status: "Novi kontakt",
-      napomena: (lead.napomena ? lead.napomena + " " : "") + `(konvertovano iz leada, izvor: ${lead.izvor || "n/a"})`,
-      podsjetnik_datum: null, podsjetnik_opis: "",
-      origin_lead_id: lead.id,
-      created_by: currentUser || lead.kolega, created_at: new Date().toISOString(),
-      updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
-    };
-    const recPot = await insertRow("potencijali", novi);
-    setPotencijali((prev) => [recPot, ...prev]);
-    const recLead = await updateRow("lidovi", lead.id, {
-      status: "Konvertovan", updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
-    });
-    setLidovi((prev) => prev.map((l) => (l.id === lead.id ? recLead : l)));
+    try {
+      const novi = {
+        naziv_firme: lead.naziv_firme, grad: lead.grad, drzava: lead.drzava,
+        kontakt_osoba: lead.kontakt_osoba, telefon: lead.telefon, email: lead.email,
+        kolega: lead.kolega, status: "Novi kontakt",
+        napomena: (lead.napomena ? lead.napomena + " " : "") + `(konvertovano iz leada, izvor: ${lead.izvor || "n/a"})`,
+        podsjetnik_datum: null, podsjetnik_opis: "",
+        origin_lead_id: lead.id,
+        created_by: currentUser || lead.kolega, created_at: new Date().toISOString(),
+        updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
+      };
+      const recPot = await insertRow("potencijali", novi);
+      setPotencijali((prev) => [recPot, ...prev]);
+      const recLead = await updateRow("lidovi", lead.id, {
+        status: "Konvertovan", updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
+      });
+      setLidovi((prev) => prev.map((l) => (l.id === lead.id ? recLead : l)));
+      showToast(`${lead.naziv_firme} konvertovan u potencijal`);
+    } catch (e) {
+      showToast("Greška pri konverziji leada", "error");
+      throw e;
+    }
   };
 
   /* ---------------- Kupci handlers ---------------- */
   const addKupac = async (payload) => {
-    const rec = await insertRow("kupci", payload);
-    setKupci((prev) => [rec, ...prev]);
+    try {
+      const rec = await insertRow("kupci", payload);
+      setKupci((prev) => [rec, ...prev]);
+      showToast("Kupac sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju kupca", "error");
+      throw e;
+    }
   };
   const updateKupac = async (id, patch) => {
-    const rec = await updateRow("kupci", id, patch);
-    setKupci((prev) => prev.map((k) => (k.id === id ? rec : k)));
+    try {
+      const rec = await updateRow("kupci", id, patch);
+      setKupci((prev) => prev.map((k) => (k.id === id ? rec : k)));
+      showToast("Kupac sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju kupca", "error");
+      throw e;
+    }
   };
-  const deleteKupac = async (id) => {
-    await deleteRow("kupci", id);
+  const deleteKupac = (id) => {
+    const item = kupci.find((k) => k.id === id);
+    if (!item) return;
     setKupci((prev) => prev.filter((k) => k.id !== id));
+    scheduleUndoDelete(
+      item.naziv_firme || "kupac",
+      () => setKupci((prev) => [item, ...prev]),
+      () => deleteRow("kupci", id)
+    );
   };
   const deleteAllKupci = async () => {
-    await deleteAllRows("kupci");
-    setKupci([]);
+    try {
+      await deleteAllRows("kupci");
+      setKupci([]);
+      showToast("Svi kupci obrisani");
+    } catch (e) {
+      showToast("Greška pri brisanju svih kupaca", "error");
+      throw e;
+    }
   };
 
   /* ---------------- Forecast handlers ---------------- */
   const addForecast = async (payload) => {
-    const rec = await insertRow("forecast", payload);
-    setForecast((prev) => [rec, ...prev]);
+    try {
+      const rec = await insertRow("forecast", payload);
+      setForecast((prev) => [rec, ...prev]);
+      showToast("Forecast stavka sačuvana");
+    } catch (e) {
+      showToast("Greška pri čuvanju forecast stavke", "error");
+      throw e;
+    }
   };
   const updateForecast = async (id, patch) => {
-    const rec = await updateRow("forecast", id, patch);
-    setForecast((prev) => prev.map((f) => (f.id === id ? rec : f)));
+    try {
+      const rec = await updateRow("forecast", id, patch);
+      setForecast((prev) => prev.map((f) => (f.id === id ? rec : f)));
+      showToast("Forecast stavka sačuvana");
+    } catch (e) {
+      showToast("Greška pri čuvanju forecast stavke", "error");
+      throw e;
+    }
   };
-  const deleteForecast = async (id) => {
-    await deleteRow("forecast", id);
+  const deleteForecast = (id) => {
+    const item = forecast.find((f) => f.id === id);
+    if (!item) return;
     setForecast((prev) => prev.filter((f) => f.id !== id));
+    scheduleUndoDelete(
+      item.kupac || "forecast stavka",
+      () => setForecast((prev) => [item, ...prev]),
+      () => deleteRow("forecast", id)
+    );
   };
   const bulkAddForecast = async (rows) => {
-    const inserted = await bulkInsert("forecast", rows);
-    setForecast((prev) => [...inserted, ...prev]);
+    try {
+      const inserted = await bulkInsert("forecast", rows);
+      setForecast((prev) => [...inserted, ...prev]);
+      showToast(`Dodano ${inserted.length} forecast stavki`);
+    } catch (e) {
+      showToast("Greška pri uvozu forecast stavki", "error");
+      throw e;
+    }
   };
   // Kad Forecast stavka postane "Dobijen" — kreira ili ažurira odgovarajući zapis u Kupcima
   const linkForecastToKupac = async (entry) => {
-    const match = kupci.find((k) => k.naziv_firme === entry.kupac && k.naziv_proizvoda === entry.softver);
-    const ts = new Date().toISOString();
-    const payload = {
-      naziv_firme: entry.kupac,
-      naziv_proizvoda: entry.softver || "",
-      broj_licenci: entry.broj_licenci || null,
-      napomena: `Automatski kreirano/ažurirano iz Forecasta (${entry.mjesec})`,
-      updated_by: currentUser || "Forecast", updated_at: ts,
-    };
-    if (match) {
-      await updateKupac(match.id, payload);
-    } else {
-      await addKupac({ ...payload, created_by: currentUser || "Forecast", created_at: ts });
+    try {
+      const match = kupci.find((k) => k.naziv_firme === entry.kupac && k.naziv_proizvoda === entry.softver);
+      const ts = new Date().toISOString();
+      const payload = {
+        naziv_firme: entry.kupac,
+        naziv_proizvoda: entry.softver || "",
+        broj_licenci: entry.broj_licenci || null,
+        napomena: `Automatski kreirano/ažurirano iz Forecasta (${entry.mjesec})`,
+        updated_by: currentUser || "Forecast", updated_at: ts,
+      };
+      if (match) {
+        await updateKupac(match.id, payload);
+      } else {
+        await addKupac({ ...payload, created_by: currentUser || "Forecast", created_at: ts });
+      }
+    } catch (e) {
+      showToast("Greška pri povezivanju sa Kupcima", "error");
+      throw e;
     }
   };
   // Svaki red iz fajla je UVIJEK poseban zapis (bez spajanja/upsert-a po serijskom broju).
   // Napomena: ako se isti fajl uveze ponovo (npr. mjesečno), stariji zapisi ostaju —
   // za čist mjesečni presjek, prije uvoza obrišite stare zapise (Supabase → SQL Editor → DELETE FROM kupci;)
   const bulkImportKupci = async (rows) => {
-    const ts = new Date().toISOString();
-    const payload = rows.map((row) => ({
-      ...row,
-      created_by: currentUser || "Uvoz",
-      created_at: ts,
-      updated_by: currentUser || "Uvoz",
-      updated_at: ts,
-    }));
-    const inserted = await bulkInsert("kupci", payload);
-    setKupci((prev) => [...inserted, ...prev]);
+    try {
+      const ts = new Date().toISOString();
+      const payload = rows.map((row) => ({
+        ...row,
+        created_by: currentUser || "Uvoz",
+        created_at: ts,
+        updated_by: currentUser || "Uvoz",
+        updated_at: ts,
+      }));
+      const inserted = await bulkInsert("kupci", payload);
+      setKupci((prev) => [...inserted, ...prev]);
+      showToast(`Uvezeno ${inserted.length} kupaca`);
+    } catch (e) {
+      showToast("Greška pri uvozu kupaca", "error");
+      throw e;
+    }
   };
 
   /* ---------------- Podrška handlers ---------------- */
   const addPodrska = async (payload) => {
-    const rec = await insertRow("podrska", payload);
-    setPodrska((prev) => [rec, ...prev]);
+    try {
+      const rec = await insertRow("podrska", payload);
+      setPodrska((prev) => [rec, ...prev]);
+      showToast("Intervencija sačuvana");
+    } catch (e) {
+      showToast("Greška pri čuvanju intervencije", "error");
+      throw e;
+    }
   };
   const updatePodrska = async (id, patch) => {
-    const rec = await updateRow("podrska", id, patch);
-    setPodrska((prev) => prev.map((s) => (s.id === id ? rec : s)));
+    try {
+      const rec = await updateRow("podrska", id, patch);
+      setPodrska((prev) => prev.map((s) => (s.id === id ? rec : s)));
+      showToast("Intervencija sačuvana");
+    } catch (e) {
+      showToast("Greška pri čuvanju intervencije", "error");
+      throw e;
+    }
   };
-  const deletePodrska = async (id) => {
-    await deleteRow("podrska", id);
+  const deletePodrska = (id) => {
+    const item = podrska.find((s) => s.id === id);
+    if (!item) return;
     setPodrska((prev) => prev.filter((s) => s.id !== id));
+    scheduleUndoDelete(
+      item.firma || "intervencija",
+      () => setPodrska((prev) => [item, ...prev]),
+      () => deleteRow("podrska", id)
+    );
   };
 
   /* ---------------- Podsjetnici handler ---------------- */
   const clearReminder = async (item) => {
-    const table = item.tip === "Potencijal" ? "potencijali" : "lidovi";
-    const rec = await updateRow(table, item.id, {
-      podsjetnik_datum: null, podsjetnik_opis: "",
-      updated_by: currentUser || item.kolega, updated_at: new Date().toISOString(),
-    });
-    if (table === "potencijali") setPotencijali((prev) => prev.map((p) => (p.id === item.id ? rec : p)));
-    else setLidovi((prev) => prev.map((l) => (l.id === item.id ? rec : l)));
+    try {
+      const table = item.tip === "Potencijal" ? "potencijali" : "lidovi";
+      const rec = await updateRow(table, item.id, {
+        podsjetnik_datum: null, podsjetnik_opis: "",
+        updated_by: currentUser || item.kolega, updated_at: new Date().toISOString(),
+      });
+      if (table === "potencijali") setPotencijali((prev) => prev.map((p) => (p.id === item.id ? rec : p)));
+      else setLidovi((prev) => prev.map((l) => (l.id === item.id ? rec : l)));
+      showToast("Podsjetnik označen kao obavljen");
+    } catch (e) {
+      showToast("Greška pri ažuriranju podsjetnika", "error");
+      throw e;
+    }
   };
 
   if (checkingAuth || !session) {
@@ -412,7 +606,16 @@ export default function HomePage() {
           ) : (
             <div key={tab} className="tab-transition">
               {tab === "pregled" && (
-                <PregledTab potencijali={potencijali} lidovi={lidovi} kupci={kupci} podrska={podrska} setTab={setTab} theme={theme} />
+                <PregledTab
+                  potencijali={potencijali}
+                  lidovi={lidovi}
+                  kupci={kupci}
+                  podrska={podrska}
+                  setTab={setTab}
+                  theme={theme}
+                  onStatusClick={(status) => { setChartFilter({ tab: "potencijali", value: status }); setTab("potencijali"); }}
+                  onLicenseClick={(label) => { setChartFilter({ tab: "kupci", value: label }); setTab("kupci"); }}
+                />
               )}
               {tab === "potencijali" && (
                 <PotencijaliTab
@@ -425,6 +628,8 @@ export default function HomePage() {
                   onBulkUpdate={bulkUpdatePotencijali}
                   onBulkDelete={bulkDeletePotencijali}
                   onViewCompany={setViewingCompany}
+                  presetStatus={chartFilter && chartFilter.tab === "potencijali" ? chartFilter.value : null}
+                  onPresetConsumed={() => setChartFilter(null)}
                 />
               )}
               {tab === "lidovi" && (
@@ -452,6 +657,8 @@ export default function HomePage() {
                   onDeleteAll={deleteAllKupci}
                   canDelete={!isTehnicar}
                   onViewCompany={setViewingCompany}
+                  presetLicenca={chartFilter && chartFilter.tab === "kupci" ? chartFilter.value : null}
+                  onPresetConsumed={() => setChartFilter(null)}
                 />
               )}
               {tab === "podrska" && (
@@ -475,6 +682,7 @@ export default function HomePage() {
                   onUpdate={updateForecast}
                   onDelete={deleteForecast}
                   onBulkAdd={bulkAddForecast}
+                  onBulkImport={bulkAddForecast}
                   onLinkToKupac={linkForecastToKupac}
                   theme={theme}
                   onViewCompany={setViewingCompany}
@@ -498,6 +706,8 @@ export default function HomePage() {
           onClose={() => setViewingCompany(null)}
         />
       )}
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
