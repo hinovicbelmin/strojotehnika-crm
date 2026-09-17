@@ -1,12 +1,12 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink, Upload } from "lucide-react";
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  currentMonthStr, fmtMonth, downloadCSV,
+  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, SearchBox, ConfirmDelete } from "./ui";
+import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ---------------------------------------------------------------------- */
@@ -161,7 +161,7 @@ function TrendChart({ data, theme }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onLinkToKupac, theme, onViewCompany }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onBulkImport, onLinkToKupac, theme, onViewCompany }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -169,6 +169,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [fTipLicence, setFTipLicence] = useState("Svi tipovi");
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [linkPrompt, setLinkPrompt] = useState(null);
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg, setCopyMsg] = useState("");
@@ -265,6 +266,9 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </button>
         <button className={btnSecondary} onClick={handleCopyFromPrevMonth} disabled={!currentUser || copyBusy}>
           <Copy size={15} /> {copyBusy ? "Kopiram..." : `Kopiraj otvorene iz ${fmtMonth(prevMjesec)}`}
+        </button>
+        <button className={btnSecondary} onClick={() => setShowImport(true)} disabled={!currentUser}>
+          <Upload size={15} /> Uvezi
         </button>
         {copyMsg && <span className="text-xs text-slate-500 dark:text-slate-400">{copyMsg}</span>}
       </div>
@@ -445,6 +449,31 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
             </button>
           </div>
         </Modal>
+      )}
+
+      {showImport && (
+        <ImportModal
+          title="Uvezi Forecast stavke"
+          columns={["Mjesec (MM/GGGG)", "Prodavač", "Kupac", "Softver", "Tip licence", "Broj licenci", "Status", "Napomena"]}
+          existingNames={Array.from(new Set([...potencijali.map((p) => p.naziv_firme), ...(kupci || []).map((k) => k.naziv_firme)]))}
+          onClose={() => setShowImport(false)}
+          onImport={async (rows) => {
+            const ts = new Date().toISOString();
+            const novi = rows.map((r) => ({
+              mjesec: parseMonthFlexible(r[0], mjesec),
+              prodavac: FORECAST_PRODAVACI.includes(r[1]) ? r[1] : "",
+              kupac: r[2] || "",
+              softver: FORECAST_SOFTVERI.includes(r[3]) ? r[3] : "",
+              tip_licence: FORECAST_TIPOVI_LICENCE.includes(r[4]) ? r[4] : "",
+              broj_licenci: r[5] ? Number(r[5]) : null,
+              status: POTENCIJAL_STATUSI.includes(r[6]) ? r[6] : "Novi kontakt",
+              napomena: r[7] || "",
+              created_by: currentUser || "Uvoz", created_at: ts,
+              updated_by: currentUser || "Uvoz", updated_at: ts,
+            }));
+            await (onBulkImport || onBulkAdd)(novi);
+          }}
+        />
       )}
     </div>
   );
