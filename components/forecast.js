@@ -4,7 +4,7 @@ import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, 
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible,
+  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -513,12 +513,12 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
             const ts = new Date().toISOString();
             const novi = rows.map((r) => ({
               mjesec: parseMonthFlexible(r[0], mjesec),
-              prodavac: FORECAST_PRODAVACI.includes(r[1]) ? r[1] : "",
+              prodavac: fuzzyMatchFromList(r[1], FORECAST_PRODAVACI),
               kupac: r[2] || "",
-              softver: FORECAST_SOFTVERI.includes(r[3]) ? r[3] : "",
-              tip_licence: FORECAST_TIPOVI_LICENCE.includes(r[4]) ? r[4] : "",
+              softver: fuzzyMatchFromList(r[3], FORECAST_SOFTVERI),
+              tip_licence: fuzzyMatchFromList(r[4], FORECAST_TIPOVI_LICENCE),
               broj_licenci: r[5] ? Number(r[5]) : null,
-              status: POTENCIJAL_STATUSI.includes(r[6]) ? r[6] : "Novi kontakt",
+              status: fuzzyMatchFromList(r[6], POTENCIJAL_STATUSI) || "Novi kontakt",
               napomena: r[7] || "",
               created_by: currentUser || "Uvoz", created_at: ts,
               updated_by: currentUser || "Uvoz", updated_at: ts,
