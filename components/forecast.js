@@ -1,12 +1,12 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink, Upload } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink, Upload, Square, CheckSquare } from "lucide-react";
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal } from "./ui";
+import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ---------------------------------------------------------------------- */
@@ -161,7 +161,7 @@ function TrendChart({ data, theme }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onBulkImport, onLinkToKupac, theme, onViewCompany }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onBulkImport, onBulkDelete, onLinkToKupac, theme, onViewCompany }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -173,6 +173,20 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [linkPrompt, setLinkPrompt] = useState(null);
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg, setCopyMsg] = useState("");
+  const [selected, setSelected] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (ids) => {
+    setSelected((prev) => (prev.size === ids.length ? new Set() : new Set(ids)));
+  };
 
   const shiftMonth = (delta) => {
     const [y, m] = mjesec.split("-").map(Number);
@@ -323,6 +337,27 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
+          <button
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            disabled={bulkBusy || !onBulkDelete}
+            onClick={async () => {
+              if (!window.confirm(`Obrisati ${selected.size} odabranih stavki forecasta?`)) return;
+              setBulkBusy(true);
+              try {
+                await onBulkDelete(Array.from(selected));
+                setSelected(new Set());
+              } finally {
+                setBulkBusy(false);
+              }
+            }}
+          >
+            Obriši odabrane
+          </button>
+        </BulkActionBar>
+      )}
+
       {filtered.length === 0 ? (
         <EmptyState
           icon={Target}
@@ -337,18 +372,29 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                  <th className="px-4 py-2.5 w-8">
+                    <button onClick={() => toggleSelectAll(filtered.map((f) => f.id))} className={btnGhostIcon} title="Odaberi sve">
+                      {selected.size === filtered.length && filtered.length > 0 ? <CheckSquare size={15} /> : <Square size={15} />}
+                    </button>
+                  </th>
                   <th className="px-4 py-2.5">Prodavač</th>
                   <th className="px-4 py-2.5">Kupac</th>
                   <th className="px-4 py-2.5">Softver</th>
                   <th className="px-4 py-2.5">Tip licence</th>
                   <th className="px-4 py-2.5 text-center">Broj licenci</th>
                   <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Napomena</th>
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filtered.map((f) => (
                   <tr key={f.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(f)}>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => toggleSelect(f.id)} className={btnGhostIcon}>
+                        {selected.has(f.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300 whitespace-nowrap">{f.prodavac || "—"}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
                       <span className="inline-flex items-center gap-1.5">
@@ -359,7 +405,6 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                           </button>
                         )}
                       </span>
-                      {f.napomena && <div className="text-xs text-slate-400 dark:text-slate-500 font-normal">{f.napomena}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.softver || "—"}</td>
                     <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.tip_licence || "—"}</td>
@@ -367,6 +412,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                     <td className="px-4 py-2.5">
                       <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
                     </td>
+                    <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 max-w-[220px] truncate" title={f.napomena || ""}>{f.napomena || "—"}</td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-end">
                         <button className={btnGhostIcon} onClick={() => setEditing(f)} title="Uredi"><Pencil size={14} /></button>
@@ -385,7 +431,11 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           {filtered.map((f) => (
             <div key={f.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4" onClick={() => setEditing(f)}>
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex items-start gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); toggleSelect(f.id); }} className={btnGhostIcon + " -ml-1.5 mt-0.5 shrink-0"}>
+                    {selected.has(f.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                  </button>
+                  <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <h4 className="font-semibold text-slate-900 dark:text-slate-100">{f.kupac}</h4>
                     {onViewCompany && (
@@ -396,6 +446,8 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                     <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{f.prodavac || "—"} · {f.softver || "—"} {f.broj_licenci ? `· ${f.broj_licenci} lic.` : ""}</p>
+                  {f.napomena && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{f.napomena}</p>}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                   <button className={btnGhostIcon} onClick={() => setEditing(f)} title="Uredi"><Pencil size={14} /></button>
