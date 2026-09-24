@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, Link2, ExternalLink, Upload, Square, CheckSquare } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare } from "lucide-react";
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
@@ -161,7 +161,7 @@ function TrendChart({ data, theme }) {
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
-export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onBulkImport, onBulkDelete, onLinkToKupac, theme, onViewCompany }) {
+export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUpdate, onDelete, onBulkAdd, onBulkImport, onBulkDelete, theme, onViewCompany }) {
   const [mjesec, setMjesec] = useState(currentMonthStr());
   const [fProdavac, setFProdavac] = useState("Svi prodavači");
   const [fKupac, setFKupac] = useState("");
@@ -170,7 +170,6 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [linkPrompt, setLinkPrompt] = useState(null);
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg, setCopyMsg] = useState("");
   const [selected, setSelected] = useState(new Set());
@@ -216,12 +215,8 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   );
 
   const handleSave = async (payload) => {
-    const wasAlreadyDobijen = editing && editing.status === "Dobijen";
     if (editing) await onUpdate(editing.id, payload);
     else await onAdd(payload);
-    if (payload.status === "Dobijen" && !wasAlreadyDobijen && onLinkToKupac) {
-      setLinkPrompt(payload);
-    }
   };
 
   const handleCopyFromPrevMonth = async () => {
@@ -479,29 +474,6 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         />
       )}
 
-      {linkPrompt && (
-        <Modal title="Povezati sa Kupcima?" onClose={() => setLinkPrompt(null)}>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex items-start gap-2">
-            <Link2 size={16} className="text-teal-600 shrink-0 mt-0.5" />
-            <span>
-              Stavka za <strong>{linkPrompt.kupac}</strong> je označena kao <strong className="text-green-700">Dobijeno</strong>.
-              Želite li automatski kreirati ili ažurirati zapis u "Kupci i licence" (proizvod: {linkPrompt.softver || "—"}, {linkPrompt.broj_licenci || 0} licenci)?
-            </span>
-          </p>
-          <div className="flex justify-end gap-2">
-            <button className={btnSecondary} onClick={() => setLinkPrompt(null)}>Ne, hvala</button>
-            <button
-              className={btnPrimary}
-              onClick={async () => {
-                await onLinkToKupac(linkPrompt);
-                setLinkPrompt(null);
-              }}
-            >
-              Da, poveži
-            </button>
-          </div>
-        </Modal>
-      )}
 
       {showImport && (
         <ImportModal
