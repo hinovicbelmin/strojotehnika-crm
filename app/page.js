@@ -414,28 +414,6 @@ export default function HomePage() {
       throw e;
     }
   };
-  // Kad Forecast stavka postane "Dobijen" — kreira ili ažurira odgovarajući zapis u Kupcima
-  const linkForecastToKupac = async (entry) => {
-    try {
-      const match = kupci.find((k) => k.naziv_firme === entry.kupac && k.naziv_proizvoda === entry.softver);
-      const ts = new Date().toISOString();
-      const payload = {
-        naziv_firme: entry.kupac,
-        naziv_proizvoda: entry.softver || "",
-        broj_licenci: entry.broj_licenci || null,
-        napomena: `Automatski kreirano/ažurirano iz Forecasta (${entry.mjesec})`,
-        updated_by: currentUser || "Forecast", updated_at: ts,
-      };
-      if (match) {
-        await updateKupac(match.id, payload);
-      } else {
-        await addKupac({ ...payload, created_by: currentUser || "Forecast", created_at: ts });
-      }
-    } catch (e) {
-      showToast("Greška pri povezivanju sa Kupcima", "error");
-      throw e;
-    }
-  };
   // Svaki red iz fajla je UVIJEK poseban zapis (bez spajanja/upsert-a po serijskom broju).
   // Napomena: ako se isti fajl uveze ponovo (npr. mjesečno), stariji zapisi ostaju —
   // za čist mjesečni presjek, prije uvoza obrišite stare zapise (Supabase → SQL Editor → DELETE FROM kupci;)
@@ -694,7 +672,6 @@ export default function HomePage() {
                   onBulkAdd={bulkAddForecast}
                   onBulkImport={bulkAddForecast}
                   onBulkDelete={bulkDeleteForecast}
-                  onLinkToKupac={linkForecastToKupac}
                   theme={theme}
                   onViewCompany={setViewingCompany}
                 />
