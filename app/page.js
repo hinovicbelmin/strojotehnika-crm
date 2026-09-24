@@ -394,6 +394,16 @@ export default function HomePage() {
       () => deleteRow("forecast", id)
     );
   };
+  const bulkDeleteForecast = (ids) => {
+    const items = forecast.filter((f) => ids.includes(f.id));
+    if (items.length === 0) return;
+    setForecast((prev) => prev.filter((f) => !ids.includes(f.id)));
+    scheduleUndoDelete(
+      `${items.length} forecast stavki`,
+      () => setForecast((prev) => [...items, ...prev]),
+      () => bulkDeleteRows("forecast", ids)
+    );
+  };
   const bulkAddForecast = async (rows) => {
     try {
       const inserted = await bulkInsert("forecast", rows);
@@ -683,6 +693,7 @@ export default function HomePage() {
                   onDelete={deleteForecast}
                   onBulkAdd={bulkAddForecast}
                   onBulkImport={bulkAddForecast}
+                  onBulkDelete={bulkDeleteForecast}
                   onLinkToKupac={linkForecastToKupac}
                   theme={theme}
                   onViewCompany={setViewingCompany}
