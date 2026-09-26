@@ -7,29 +7,22 @@ import {
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
+  FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar } from "./ui";
+import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ====================================================================== */
 /*  PREGLED                                                                */
 /* ====================================================================== */
 
-const STATUS_HEX = {
-  "Novi kontakt": "#94a3b8",
-  "U pregovorima": "#3b82f6",
-  "Ponuda poslana": "#8b5cf6",
-  "Na čekanju": "#f59e0b",
-  Dobijen: "#22c55e",
-  Izgubljen: "#ef4444",
-};
 const LICENCA_HEX = { Aktivno: "#22c55e", "Ističe uskoro": "#f59e0b", Isteklo: "#ef4444" };
 
 function StatCard({ icon: Icon, label, value, accent, onClick }) {
   return (
-    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150">
+    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-0.5 hover:scale-[1.015] active:translate-y-0 active:scale-[0.98] transition-all duration-150">
       <div className="flex items-center justify-between mb-3">
         <div className={"w-9 h-9 rounded-lg flex items-center justify-center " + accent}>
           <Icon size={17} />
@@ -41,7 +34,7 @@ function StatCard({ icon: Icon, label, value, accent, onClick }) {
   );
 }
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme, onStatusClick, onLicenseClick }) {
+export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setTab, theme, onLicenseClick }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
   const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
@@ -59,9 +52,11 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
   const stopaKonverzije = ukupnoLidova > 0 ? Math.round((konvertovanoLidova / ukupnoLidova) * 100) : 0;
   const stopaDobijanja = konvertovanoLidova > 0 ? Math.round((dobijenoIzLeada / konvertovanoLidova) * 100) : 0;
 
-  const potencijaliChartData = POTENCIJAL_STATUSI.map((s) => ({
+  const tekuciMjesec = currentMonthStr();
+  const forecastOvogMjeseca = (forecast || []).filter((f) => f.mjesec === tekuciMjesec);
+  const forecastChartData = FORECAST_STATUSI.map((s) => ({
     status: s,
-    broj: potencijali.filter((p) => p.status === s).length,
+    broj: forecastOvogMjeseca.filter((f) => f.status === s).length,
   }));
 
   const RANK = { Isteklo: 3, "Ističe uskoro": 2, Aktivno: 1, Nepoznato: 0 };
@@ -97,7 +92,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
         <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" onClick={() => setTab("kupci")} />
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mb-4 transition-colors duration-150">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mb-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.005]">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
           <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Konverzija lidova
         </h3>
@@ -129,30 +124,33 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
-            <Target size={15} className="text-slate-400 dark:text-slate-500" /> Potencijali po statusu
+            <Target size={15} className="text-slate-400 dark:text-slate-500" /> Forecast po statusu ({fmtMonth(tekuciMjesec)})
           </h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={potencijaliChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={forecastChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
               <XAxis dataKey="status" tick={{ fontSize: 11, fill: axisColor }} interval={0} angle={-20} textAnchor="end" height={55} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, "Broj"]} />
-              <Bar dataKey="broj" radius={[6, 6, 0, 0]} cursor={onStatusClick ? "pointer" : "default"}>
-                {potencijaliChartData.map((d, i) => (
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, "Broj stavki"]} />
+              <Bar dataKey="broj" radius={[6, 6, 0, 0]} cursor="pointer">
+                {forecastChartData.map((d, i) => (
                   <Cell
                     key={i}
-                    fill={STATUS_HEX[d.status] || "#94a3b8"}
-                    onClick={() => onStatusClick && d.broj > 0 && onStatusClick(d.status)}
+                    fill={FORECAST_STATUS_HEX[d.status] || "#94a3b8"}
+                    onClick={() => setTab("forecast")}
                   />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {FORECAST_STATUSI.map((s) => <ForecastStatusBadge key={s} status={s} />)}
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
             <Building2 size={15} className="text-slate-400 dark:text-slate-500" /> Kupci po statusu licence
           </h3>
@@ -187,7 +185,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
               <Bell size={15} className="text-slate-400 dark:text-slate-500" /> Podsjetnici (narednih 7 dana)
@@ -221,7 +219,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-colors duration-150">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
               <AlertTriangle size={15} className="text-slate-400 dark:text-slate-500" /> Licence koje ističu
@@ -255,7 +253,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, setTab, theme,
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mt-4 transition-colors duration-150">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mt-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.005]">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-1.5">
           <Wrench size={15} className="text-slate-400 dark:text-slate-500" /> Posljednja tehnička podrška
         </h3>
@@ -522,7 +520,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
         </select>
         <div />
         <button
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] transition-all"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
@@ -540,7 +538,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
             {COLLEAGUE_NAMES.map((n) => <option key={n} className="text-slate-800">{n}</option>)}
           </select>
           <button
-            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 disabled:opacity-50"
+            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 active:scale-95 transition-transform disabled:opacity-50"
             disabled={!bulkKolega || bulkBusy}
             onClick={async () => {
               setBulkBusy(true);
@@ -556,7 +554,7 @@ export function PotencijaliTab({ data, currentUser, onAdd, onUpdate, onDelete, o
             Promijeni kolegu
           </button>
           <button
-            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 active:scale-95 transition-transform disabled:opacity-50"
             disabled={bulkBusy}
             onClick={async () => {
               if (!window.confirm(`Obrisati ${selected.size} odabranih potencijala?`)) return;
@@ -844,7 +842,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
             {LEAD_STATUSI.map((s) => <option key={s} className="text-slate-800">{s}</option>)}
           </select>
           <button
-            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 disabled:opacity-50"
+            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 active:scale-95 transition-transform disabled:opacity-50"
             disabled={!bulkStatus || bulkBusy}
             onClick={async () => {
               setBulkBusy(true);
@@ -860,7 +858,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
             Promijeni status
           </button>
           <button
-            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 active:scale-95 transition-transform disabled:opacity-50"
             disabled={bulkBusy}
             onClick={async () => {
               if (!window.confirm(`Obrisati ${selected.size} odabranih lidova?`)) return;
