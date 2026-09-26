@@ -1,7 +1,7 @@
 "use client";
 import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer } from "lucide-react";
 import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr } from "../lib/crm";
-import { Modal } from "./ui";
+import { Modal, ForecastStatusBadge } from "./ui";
 
 function norm(s) {
   return (s || "").trim().toLowerCase();
@@ -150,7 +150,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
                   <span className="font-medium text-slate-800 dark:text-slate-200">{fmtMonth(f.mjesec)}</span>
                   <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">{f.softver} {f.broj_licenci ? `· ${f.broj_licenci} lic.` : ""}</span>
                 </div>
-                <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + (STATUS_BOJE[f.status] || "bg-slate-100 text-slate-600")}>{f.status}</span>
+                <span className="shrink-0"><ForecastStatusBadge status={f.status} /></span>
               </div>
             ))}
           </div>
