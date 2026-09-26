@@ -599,9 +599,9 @@ export default function HomePage() {
                   lidovi={lidovi}
                   kupci={kupci}
                   podrska={podrska}
+                  forecast={forecast}
                   setTab={setTab}
                   theme={theme}
-                  onStatusClick={(status) => { setChartFilter({ tab: "potencijali", value: status }); setTab("potencijali"); }}
                   onLicenseClick={(label) => { setChartFilter({ tab: "kupci", value: label }); setTab("kupci"); }}
                 />
               )}
