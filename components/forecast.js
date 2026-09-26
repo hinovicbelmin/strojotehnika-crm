@@ -2,11 +2,11 @@
 import { useState, useMemo } from "react";
 import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare } from "lucide-react";
 import {
-  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, POTENCIJAL_STATUSI, STATUS_BOJE, STATUS_WEIGHTS,
+  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, getForecastStatusWeight, isForecastWon, isForecastLost,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar } from "./ui";
+import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
 
 /* ---------------------------------------------------------------------- */
@@ -22,7 +22,7 @@ function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci,
       softver: "",
       tip_licence: "",
       broj_licenci: "",
-      status: "Novi kontakt",
+      status: "Na čekanju",
       napomena: "",
     }
   );
@@ -92,9 +92,9 @@ function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci,
         <Field label="Broj licenci">
           <input type="number" min="0" className={inputCls} value={f.broj_licenci ?? ""} onChange={set("broj_licenci")} />
         </Field>
-        <Field label="Status" hint={`% šanse: ${Math.round((STATUS_WEIGHTS[f.status] ?? 0) * 100)}%`}>
+        <Field label="Status" hint={`% šanse: ${Math.round(getForecastStatusWeight(f.status) * 100)}%`}>
           <select className={inputCls} value={f.status} onChange={set("status")}>
-            {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
+            {FORECAST_STATUSI.map((s) => <option key={s}>{s}</option>)}
           </select>
         </Field>
       </div>
@@ -125,8 +125,8 @@ function TrendChart({ data, theme }) {
   const chartData = months.map((m) => {
     const rows = data.filter((f) => f.mjesec === m);
     const ukupno = rows.reduce((sum, r) => sum + (Number(r.broj_licenci) || 0), 0);
-    const prodano = rows.filter((r) => r.status === "Dobijen").reduce((sum, r) => sum + (Number(r.broj_licenci) || 0), 0);
-    const ponderisano = Math.round(rows.reduce((sum, r) => sum + (Number(r.broj_licenci) || 0) * (STATUS_WEIGHTS[r.status] ?? 0), 0));
+    const prodano = rows.filter((r) => isForecastWon(r.status)).reduce((sum, r) => sum + (Number(r.broj_licenci) || 0), 0);
+    const ponderisano = Math.round(rows.reduce((sum, r) => sum + (Number(r.broj_licenci) || 0) * getForecastStatusWeight(r.status), 0));
     return { mjesec: fmtMonth(m), ukupno, prodano, ponderisano };
   });
 
@@ -209,9 +209,9 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   });
 
   const ukupnoLicenci = filtered.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0), 0);
-  const prodanoLicenci = filtered.filter((f) => f.status === "Dobijen").reduce((sum, f) => sum + (Number(f.broj_licenci) || 0), 0);
+  const prodanoLicenci = filtered.filter((f) => isForecastWon(f.status)).reduce((sum, f) => sum + (Number(f.broj_licenci) || 0), 0);
   const ponderisanoLicenci = Math.round(
-    filtered.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0) * (STATUS_WEIGHTS[f.status] ?? 0), 0)
+    filtered.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0) * getForecastStatusWeight(f.status), 0)
   );
 
   const handleSave = async (payload) => {
@@ -220,7 +220,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   };
 
   const handleCopyFromPrevMonth = async () => {
-    const openRows = data.filter((f) => f.mjesec === prevMjesec && f.status !== "Dobijen" && f.status !== "Izgubljen");
+    const openRows = data.filter((f) => f.mjesec === prevMjesec && !isForecastWon(f.status) && !isForecastLost(f.status));
     if (openRows.length === 0) {
       setCopyMsg("Nema otvorenih stavki u prethodnom mjesecu.");
       setTimeout(() => setCopyMsg(""), 3500);
@@ -301,7 +301,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </select>
         <div />
         <button
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] transition-all"
           onClick={exportCSV}
         >
           <Download size={15} /> Izvoz CSV
@@ -309,20 +309,20 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.015] hover:border-slate-300 dark:hover:border-slate-600">
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs mb-1">
             <Target size={14} /> Ukupno potencijalnih licenci ({fmtMonth(mjesec)})
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{ukupnoLicenci}</div>
         </div>
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.015] hover:border-slate-300 dark:hover:border-slate-600">
           <div className="flex items-center gap-2 text-blue-600 text-xs mb-1">
             <TrendingUp size={14} /> Ponderisana procjena
           </div>
           <div className="text-2xl font-bold text-blue-700">{ponderisanoLicenci}</div>
           <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">na osnovu % šanse po statusu</div>
         </div>
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.015] hover:border-slate-300 dark:hover:border-slate-600">
           <div className="flex items-center gap-2 text-green-600 text-xs mb-1">
             <TrendingUp size={14} /> Prodano ({fmtMonth(mjesec)})
           </div>
@@ -335,7 +335,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
       {selected.size > 0 && (
         <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
           <button
-            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 disabled:opacity-50"
+            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 active:scale-95 transition-transform disabled:opacity-50"
             disabled={bulkBusy || !onBulkDelete}
             onClick={async () => {
               if (!window.confirm(`Obrisati ${selected.size} odabranih stavki forecasta?`)) return;
@@ -405,7 +405,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                     <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.tip_licence || "—"}</td>
                     <td className="px-4 py-2.5 text-center text-slate-600 dark:text-slate-400">{f.broj_licenci ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
+                      <ForecastStatusBadge status={f.status} />
                     </td>
                     <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 max-w-[220px] truncate" title={f.napomena || ""}>{f.napomena || "—"}</td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -438,7 +438,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                         <ExternalLink size={12} />
                       </button>
                     )}
-                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[f.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{f.status}</span>
+                    <ForecastStatusBadge status={f.status} />
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{f.prodavac || "—"} · {f.softver || "—"} {f.broj_licenci ? `· ${f.broj_licenci} lic.` : ""}</p>
                   {f.napomena && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{f.napomena}</p>}
@@ -490,7 +490,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
               softver: fuzzyMatchFromList(r[3], FORECAST_SOFTVERI),
               tip_licence: fuzzyMatchFromList(r[4], FORECAST_TIPOVI_LICENCE),
               broj_licenci: r[5] ? Number(r[5]) : null,
-              status: fuzzyMatchFromList(r[6], POTENCIJAL_STATUSI) || "Novi kontakt",
+              status: fuzzyMatchFromList(r[6], FORECAST_STATUSI) || "Na čekanju",
               napomena: r[7] || "",
               created_by: currentUser || "Uvoz", created_at: ts,
               updated_by: currentUser || "Uvoz", updated_at: ts,
