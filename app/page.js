@@ -14,6 +14,7 @@ import {
 } from "../components/tabs";
 import { ForecastTab } from "../components/forecast";
 import { CompanyProfileModal } from "../components/companyProfile";
+import { GlobalSearch } from "../components/globalSearch";
 import { AppSkeleton } from "../components/skeleton";
 import { ToastStack } from "../components/toast";
 
@@ -545,8 +546,18 @@ export default function HomePage() {
             <button className="md:hidden p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setNavOpen(true)}>
               <ActiveIcon size={18} />
             </button>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight truncate">{TABS.find((t) => t.id === tab)?.label}</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight truncate hidden sm:block">{TABS.find((t) => t.id === tab)?.label}</h2>
           </div>
+          <GlobalSearch
+            potencijali={potencijali}
+            lidovi={lidovi}
+            kupci={kupci}
+            podrska={podrska}
+            forecast={forecast}
+            isTehnicar={isTehnicar}
+            onSelectCompany={setViewingCompany}
+            onNavigateTab={setTab}
+          />
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={toggleDensity}
