@@ -150,7 +150,7 @@ function TrendChart({ data, theme }) {
         <Tooltip contentStyle={tooltipStyle} />
         <Legend wrapperStyle={{ fontSize: 12, color: axisColor }} />
         <Bar dataKey="ukupno" name="Potencijalne licence" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="ponderisano" name="Ponderisana procjena" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="ponderisano" name="Očekivana prodaja" fill="#3b82f6" radius={[4, 4, 0, 0]} />
         <Bar dataKey="prodano" name="Prodano" fill="#22c55e" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
@@ -323,7 +323,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </div>
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.015] hover:border-slate-300 dark:hover:border-slate-600">
           <div className="flex items-center gap-2 text-blue-600 text-xs mb-1">
-            <TrendingUp size={14} /> Ponderisana procjena
+            <TrendingUp size={14} /> Očekivana prodaja
           </div>
           <div className="text-2xl font-bold text-blue-700">{ponderisanoLicenci}</div>
           <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">na osnovu % šanse po statusu</div>
@@ -463,7 +463,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Trend — potencijalne vs ponderisane vs prodane licence (zadnjih 12 mjeseci)
+          <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Trend — potencijalne vs očekivane vs prodane licence (zadnjih 12 mjeseci)
         </h3>
         <TrendChart data={data} theme={theme} />
       </div>
