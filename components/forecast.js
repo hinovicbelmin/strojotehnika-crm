@@ -1,8 +1,8 @@
 "use client";
-import { useState, useMemo } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare, List, LayoutGrid } from "lucide-react";
 import {
-  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, getForecastStatusWeight, isForecastWon, isForecastLost,
+  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, FORECAST_STATUS_HEX, getForecastStatusWeight, isForecastWon, isForecastLost,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList, buildCompanyNameIndex, matchCompanyName, findCompanyMatch,
 } from "../lib/crm";
@@ -158,6 +158,174 @@ function TrendChart({ data, theme }) {
 }
 
 /* ---------------------------------------------------------------------- */
+/*  KANBAN PRIKAZ                                                         */
+/* ---------------------------------------------------------------------- */
+
+// Stari nazivi statusa se prikazuju u odgovarajućoj novoj koloni
+const LEGACY_TO_KANBAN = {
+  "Novi kontakt": "Na čekanju",
+  "Ponuda poslana": "U pregovorima",
+  Dobijen: "Dobijeno",
+  Izgubljen: "Izgubljeno",
+};
+function kanbanColumnOf(status) {
+  if (FORECAST_STATUSI.includes(status)) return status;
+  return LEGACY_TO_KANBAN[status] || "Na čekanju";
+}
+
+const AVATAR_BOJE = [
+  "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+];
+function initialsOf(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+function avatarCls(name) {
+  let h = 0;
+  for (const ch of name || "") h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_BOJE[h % AVATAR_BOJE.length];
+}
+
+function ForecastKanban({ items, currentUser, onUpdate, onEdit, onViewCompany }) {
+  const [dragId, setDragId] = useState(null);
+  const [overCol, setOverCol] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const canDrag = !!currentUser && !!onUpdate;
+
+  const columns = useMemo(() => {
+    const map = new Map(FORECAST_STATUSI.map((s) => [s, []]));
+    for (const it of items) map.get(kanbanColumnOf(it.status)).push(it);
+    return FORECAST_STATUSI.map((s) => {
+      const list = map.get(s);
+      return { status: s, list, licenci: list.reduce((sum, r) => sum + (Number(r.broj_licenci) || 0), 0) };
+    });
+  }, [items]);
+
+  const handleDrop = async (e, status) => {
+    e.preventDefault();
+    setOverCol(null);
+    const id = e.dataTransfer.getData("text/plain") || dragId;
+    setDragId(null);
+    if (!id || !canDrag) return;
+    const item = items.find((i) => String(i.id) === String(id));
+    if (!item || item.status === status) return;
+    setSavingId(item.id);
+    try {
+      await onUpdate(item.id, { status, updated_by: currentUser, updated_at: new Date().toISOString() });
+    } catch (_) {
+      // greška se već prikazuje kao obavijest
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="overflow-x-auto mb-6 -mx-1 px-1 pb-1">
+      <div className="grid grid-cols-5 gap-3 min-w-[1080px] items-start">
+        {columns.map(({ status, list, licenci }) => {
+          const hex = FORECAST_STATUS_HEX[status] || "#94a3b8";
+          const isOver = overCol === status;
+          return (
+            <div
+              key={status}
+              onDragOver={(e) => { if (!canDrag) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== status) setOverCol(status); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol((c) => (c === status ? null : c)); }}
+              onDrop={(e) => handleDrop(e, status)}
+              className={
+                "rounded-xl border p-2.5 transition-colors duration-150 " +
+                (isOver
+                  ? "border-teal-400 bg-teal-50/70 dark:border-teal-600 dark:bg-teal-900/20"
+                  : "border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-800/40")
+              }
+            >
+              <div className="flex items-center justify-between px-1 pb-2.5">
+                <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: hex }} />
+                  {status}
+                </span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: hex + "22", color: hex }} title={`${list.length} stavki · ${licenci} licenci`}>
+                  {list.length}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 px-1 -mt-1.5 pb-2">{licenci} lic.</div>
+
+              <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-0.5">
+                {list.length === 0 && (
+                  <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg py-6 text-center text-xs text-slate-400 dark:text-slate-500">
+                    {canDrag ? "Prevuci stavku ovdje" : "Nema stavki"}
+                  </div>
+                )}
+                {list.map((f) => {
+                  const pct = Math.round(getForecastStatusWeight(f.status) * 100);
+                  const won = isForecastWon(f.status);
+                  const lost = isForecastLost(f.status);
+                  return (
+                    <div
+                      key={f.id}
+                      draggable={canDrag}
+                      onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(f.id)); e.dataTransfer.effectAllowed = "move"; setDragId(f.id); }}
+                      onDragEnd={() => { setDragId(null); setOverCol(null); }}
+                      onClick={() => onEdit(f)}
+                      className={
+                        "group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150 " +
+                        (canDrag ? "cursor-grab active:cursor-grabbing " : "cursor-pointer ") +
+                        (dragId === f.id ? "opacity-40 " : "") +
+                        (savingId === f.id ? "opacity-60 animate-pulse " : "") +
+                        (lost ? "opacity-75 " : "")
+                      }
+                      style={{ borderTop: `3px solid ${hex}` }}
+                      title={f.napomena || ""}
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        <span className={"text-sm font-semibold text-slate-900 dark:text-slate-100 leading-snug break-words " + (lost ? "line-through decoration-slate-300 dark:decoration-slate-600" : "")}>
+                          {f.kupac || "—"}
+                        </span>
+                        {onViewCompany && f.kupac && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onViewCompany(f.kupac); }}
+                            className="shrink-0 mt-0.5 text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400"
+                            title="360° pregled firme"
+                            aria-label={`360° pregled firme ${f.kupac}`}
+                          >
+                            <ExternalLink size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {[f.softver, f.tip_licence].filter(Boolean).join(" · ") || "—"}
+                        {f.broj_licenci ? <span className="font-medium text-slate-700 dark:text-slate-300"> · {f.broj_licenci} lic.</span> : null}
+                      </p>
+                      {f.napomena && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 truncate">{f.napomena}</p>}
+                      <div className="flex items-center justify-between mt-2.5">
+                        <span
+                          className={"w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center " + avatarCls(f.prodavac)}
+                          title={f.prodavac || "Bez prodavača"}
+                        >
+                          {initialsOf(f.prodavac)}
+                        </span>
+                        <span className={"text-[11px] font-semibold " + (won ? "text-green-600 dark:text-green-400" : lost ? "text-red-500 dark:text-red-400" : "text-slate-400 dark:text-slate-500")}>
+                          {won ? "✓ 100%" : `${pct}% šanse`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /*  GLAVNI TAB                                                            */
 /* ---------------------------------------------------------------------- */
 
@@ -174,6 +342,19 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [copyMsg, setCopyMsg] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Prikaz: "kanban" ili "tabela". Pamti se izbor; ako ga nema — Kanban na računaru, tabela na mobitelu.
+  const [view, setView] = useState("kanban");
+  useEffect(() => {
+    let saved = null;
+    try { saved = window.localStorage.getItem("forecastView"); } catch (_) {}
+    if (saved === "kanban" || saved === "tabela") setView(saved);
+    else if (window.innerWidth < 640) setView("tabela");
+  }, []);
+  const changeView = (v) => {
+    setView(v);
+    if (v === "kanban") setSelected(new Set());
+    try { window.localStorage.setItem("forecastView", v); } catch (_) {}
+  };
 
   // Indeks postojećih firmi (kupci + potencijali) za prepoznavanje naziva pri uvozu i u pregledu prije uvoza
   const companyIndex = useMemo(
@@ -305,7 +486,28 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           <option>Svi tipovi</option>
           {FORECAST_TIPOVI_LICENCE.map((t) => <option key={t}>{t}</option>)}
         </select>
-        <div />
+        <div className="flex justify-end">
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5" role="group" aria-label="Način prikaza">
+            {[
+              { key: "kanban", label: "Kanban", icon: LayoutGrid },
+              { key: "tabela", label: "Tabela", icon: List },
+            ].map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => changeView(key)}
+                aria-pressed={view === key}
+                className={
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 " +
+                  (view === key
+                    ? "bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")
+                }
+              >
+                <Icon size={14} /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] transition-all"
           onClick={exportCSV}
@@ -338,7 +540,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
         </div>
       </div>
 
-      {selected.size > 0 && (
+      {view === "tabela" && selected.size > 0 && (
         <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
           <button
             className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 active:scale-95 transition-transform disabled:opacity-50"
@@ -365,6 +567,14 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           title={`Nema unesenih stavki za ${fmtMonth(mjesec)}`}
           subtitle="Dodaj prodajne prilike za odabrani mjesec — svaki unos prati prodavača, kupca, softver, tip i broj licenci."
           action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu stavku</button>}
+        />
+      ) : view === "kanban" ? (
+        <ForecastKanban
+          items={filtered}
+          currentUser={currentUser}
+          onUpdate={onUpdate}
+          onEdit={setEditing}
+          onViewCompany={onViewCompany}
         />
       ) : (
         <>
