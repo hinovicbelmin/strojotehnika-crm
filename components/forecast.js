@@ -4,7 +4,7 @@ import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, 
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, getForecastStatusWeight, isForecastWon, isForecastLost,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList,
+  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList, buildCompanyNameIndex, matchCompanyName,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -483,10 +483,14 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
             const ts = new Date().toISOString();
+            const companyIndex = buildCompanyNameIndex([
+              ...potencijali.map((p) => p.naziv_firme),
+              ...(kupci || []).map((k) => k.naziv_firme),
+            ]);
             const novi = rows.map((r) => ({
               mjesec: parseMonthFlexible(r[0], mjesec),
               prodavac: fuzzyMatchFromList(r[1], FORECAST_PRODAVACI),
-              kupac: r[2] || "",
+              kupac: matchCompanyName(r[2] || "", companyIndex),
               softver: fuzzyMatchFromList(r[3], FORECAST_SOFTVERI),
               tip_licence: fuzzyMatchFromList(r[4], FORECAST_TIPOVI_LICENCE),
               broj_licenci: r[5] ? Number(r[5]) : null,
