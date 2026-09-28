@@ -4,7 +4,7 @@ import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, 
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, getForecastStatusWeight, isForecastWon, isForecastLost,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
-  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList, buildCompanyNameIndex, matchCompanyName,
+  currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList, buildCompanyNameIndex, matchCompanyName, findCompanyMatch,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, SearchBox, ConfirmDelete, ImportModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -174,6 +174,12 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [copyMsg, setCopyMsg] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Indeks postojećih firmi (kupci + potencijali) za prepoznavanje naziva pri uvozu i u pregledu prije uvoza
+  const companyIndex = useMemo(
+    () => (showImport ? buildCompanyNameIndex([...(kupci || []).map((k) => k.naziv_firme), ...potencijali.map((p) => p.naziv_firme)]) : null),
+    [showImport, kupci, potencijali]
+  );
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -480,13 +486,11 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
           title="Uvezi Forecast stavke"
           columns={["Mjesec (MM/GGGG)", "Prodavač", "Kupac", "Softver", "Tip licence", "Broj licenci", "Status", "Napomena"]}
           existingNames={Array.from(new Set([...potencijali.map((p) => p.naziv_firme), ...(kupci || []).map((k) => k.naziv_firme)]))}
+          nameColumnIndex={2}
+          resolveName={(n) => findCompanyMatch(n, companyIndex)}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
             const ts = new Date().toISOString();
-            const companyIndex = buildCompanyNameIndex([
-              ...potencijali.map((p) => p.naziv_firme),
-              ...(kupci || []).map((k) => k.naziv_firme),
-            ]);
             const novi = rows.map((r) => ({
               mjesec: parseMonthFlexible(r[0], mjesec),
               prodavac: fuzzyMatchFromList(r[1], FORECAST_PRODAVACI),
