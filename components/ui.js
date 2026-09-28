@@ -117,6 +117,7 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
   const [skipHeader, setSkipHeader] = useState(true);
   const [fileError, setFileError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const pastedRows = useMemo(() => {
     return text
@@ -145,8 +146,7 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
     return { existing, novo: rows.length - existing };
   }, [rows, existingSet]);
 
-  const handleFile = async (e) => {
-    const file = e.target.files[0];
+  const processFile = async (file) => {
     if (!file) return;
     setFileError("");
     setFileName(file.name);
@@ -167,6 +167,30 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
       setFileError("Nije uspjelo čitanje fajla. Provjerite da je u pitanju .xlsx, .xls ili .csv fajl.");
       setFileRows([]);
     }
+  };
+
+  const handleFile = async (e) => {
+    await processFile(e.target.files[0]);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) await processFile(file);
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Ne gasi highlight kad kursor samo pređe preko unutrašnje ikonice/teksta unutar zone
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
   };
 
   return (
@@ -197,9 +221,22 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
 
       {mode === "file" ? (
         <div>
-          <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl py-8 px-4 cursor-pointer hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50/30 dark:hover:bg-teal-900/10 transition-colors duration-150">
-            <FileSpreadsheet size={24} className="text-slate-400 dark:text-slate-500" />
-            <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">{fileName || "Kliknite da odaberete .xlsx / .xls / .csv fajl"}</span>
+          <label
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={
+              "flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-8 px-4 cursor-pointer transition-colors duration-150 " +
+              (isDragging
+                ? "border-teal-500 bg-teal-50 dark:bg-teal-900/20"
+                : "border-slate-300 dark:border-slate-700 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50/30 dark:hover:bg-teal-900/10")
+            }
+          >
+            <FileSpreadsheet size={24} className={isDragging ? "text-teal-500" : "text-slate-400 dark:text-slate-500"} />
+            <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+              {isDragging ? "Otpusti fajl ovdje" : fileName || "Kliknite da odaberete .xlsx / .xls / .csv fajl"}
+            </span>
             <span className="text-xs text-slate-400 dark:text-slate-500">ili prevucite fajl ovdje</span>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
           </label>
