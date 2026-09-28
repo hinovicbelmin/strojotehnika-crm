@@ -109,7 +109,7 @@ export function MetaLine({ record }) {
   );
 }
 
-export function ImportModal({ title, columns, existingNames, onClose, onImport }) {
+export function ImportModal({ title, columns, existingNames, nameColumnIndex = 0, resolveName, onClose, onImport }) {
   const [mode, setMode] = useState("file"); // "file" | "paste"
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
@@ -137,14 +137,22 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
     return new Set((existingNames || []).map((n) => (n || "").trim().toLowerCase()).filter(Boolean));
   }, [existingNames]);
 
+  // Za svaki red: naziv firme iz odgovarajuće kolone + (ako postoji) prepoznata postojeća firma iz baze
+  const previewRows = useMemo(() => {
+    return rows.map((r) => {
+      const name = String(r[nameColumnIndex] || "").trim();
+      let matched = null;
+      if (name && existingSet.has(name.toLowerCase())) matched = name;
+      else if (name && resolveName) matched = resolveName(name) || null;
+      return { name, matched };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, existingSet, nameColumnIndex]);
+
   const previewStats = useMemo(() => {
-    let existing = 0;
-    for (const r of rows) {
-      const n = (r[0] || "").trim().toLowerCase();
-      if (n && existingSet.has(n)) existing++;
-    }
-    return { existing, novo: rows.length - existing };
-  }, [rows, existingSet]);
+    const existing = previewRows.filter((p) => p.matched).length;
+    return { existing, novo: previewRows.length - existing };
+  }, [previewRows]);
 
   const processFile = async (file) => {
     if (!file) return;
@@ -278,11 +286,15 @@ export function ImportModal({ title, columns, existingNames, onClose, onImport }
             Svaki red iz fajla se uvijek dodaje kao poseban zapis (bez spajanja) — oznaka "već postoji" je samo informativna, da primijetite eventualne duplikate prije potvrde.
           </p>
           <div className="mt-2 max-h-32 overflow-y-auto border-t border-slate-200 dark:border-slate-700 pt-2 space-y-1">
-            {rows.slice(0, 100).map((r, i) => {
-              const isExisting = existingSet.has((r[0] || "").trim().toLowerCase());
+            {previewRows.slice(0, 100).map((p, i) => {
+              const isExisting = !!p.matched;
+              const renamed = isExisting && p.matched !== p.name;
               return (
                 <div key={i} className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-300 truncate">{r[0]}</span>
+                  <span className="text-slate-600 dark:text-slate-300 truncate">
+                    {p.name || "—"}
+                    {renamed && <span className="text-slate-400 dark:text-slate-500"> → {p.matched}</span>}
+                  </span>
                   <span className={"px-1.5 py-0.5 rounded shrink-0 ml-2 " + (isExisting ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400")}>
                     {isExisting ? "već postoji" : "novo"}
                   </span>
