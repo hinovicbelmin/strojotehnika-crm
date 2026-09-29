@@ -10,9 +10,10 @@ import {
   FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
+  getColleagueDept, getForecastStatusWeight, isForecastWon, isForecastLost,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
 /*  PREGLED                                                                */
@@ -20,21 +21,90 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 
 const LICENCA_HEX = { Aktivno: "#22c55e", "Ističe uskoro": "#f59e0b", Isteklo: "#ef4444" };
 
-function StatCard({ icon: Icon, label, value, accent, onClick }) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Procentualna promjena; "novo" = prije 30 dana je bilo 0, a sada ima nešto
+function pctChange(now, before) {
+  if (before === 0) return now > 0 ? "novo" : 0;
+  return Math.round(((now - before) / before) * 100);
+}
+
+// Broj zapisa kreiranih u periodu [prije fromDays dana, prije toDays dana)
+function countCreatedBetween(items, fromDays, toDays) {
+  const now = Date.now();
+  return items.filter((i) => {
+    if (!i.created_at) return false;
+    const t = new Date(i.created_at).getTime();
+    if (isNaN(t)) return false;
+    return t > now - fromDays * DAY_MS && t <= now - toDays * DAY_MS;
+  }).length;
+}
+
+// Bosanska množina: 1 licenca, 2-4 licence, 5+ licenci
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+function TrendBadge({ value, invert, title }) {
+  let text, cls;
+  if (value === "novo") {
+    text = "▲ novo";
+    cls = invert ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+  } else if (value > 0) {
+    text = `▲ ${value}%`;
+    cls = invert ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+  } else if (value < 0) {
+    text = `▼ ${Math.abs(value)}%`;
+    cls = invert ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400";
+  } else {
+    text = "bez promjene";
+    cls = "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+  }
+  return <span title={title} className={"text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap " + cls}>{text}</span>;
+}
+
+function StatCard({ icon: Icon, label, value, accent, onClick, trend, trendInvert, trendTitle, caption, warn }) {
   return (
-    <button onClick={onClick} className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-0.5 hover:scale-[1.015] active:translate-y-0 active:scale-[0.98] transition-all duration-150">
-      <div className="flex items-center justify-between mb-3">
-        <div className={"w-9 h-9 rounded-lg flex items-center justify-center " + accent}>
-          <Icon size={17} />
+    <button
+      onClick={onClick}
+      className={
+        "text-left rounded-2xl border p-5 shadow-sm hover:shadow-md dark:hover:shadow-black/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 " +
+        (warn
+          ? "bg-amber-50 dark:bg-amber-900/15 border-amber-200 dark:border-amber-800/60 hover:border-amber-300 dark:hover:border-amber-700"
+          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600")
+      }
+    >
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className={"w-10 h-10 rounded-xl flex items-center justify-center " + accent}>
+          <Icon size={18} />
         </div>
+        {trend !== undefined && <TrendBadge value={trend} invert={trendInvert} title={trendTitle} />}
       </div>
-      <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{value}</div>
-      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</div>
+      <div className={"text-3xl font-bold tracking-tight " + (warn ? "text-amber-800 dark:text-amber-300" : "text-slate-900 dark:text-slate-100")}>{value}</div>
+      <div className={"text-sm mt-0.5 " + (warn ? "text-amber-700 dark:text-amber-400" : "text-slate-500 dark:text-slate-400")}>{label}</div>
+      {caption && <div className={"text-[11px] mt-1 " + (warn ? "text-amber-600/80 dark:text-amber-500/80" : "text-slate-400 dark:text-slate-500")}>{caption}</div>}
     </button>
   );
 }
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setTab, theme, onLicenseClick }) {
+// Oznaka ispod stupca: dugi nazivi statusa idu u dva reda
+function StatusTick({ x, y, payload, fill }) {
+  const words = String(payload.value).split(" ");
+  const lines = words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(" "), words.slice(Math.ceil(words.length / 2)).join(" ")] : words;
+  return (
+    <text x={x} y={y + 12} textAnchor="middle" fontSize={11} fill={fill}>
+      {lines.map((l, i) => <tspan key={i} x={x} dy={i === 0 ? 0 : 13}>{l}</tspan>)}
+    </text>
+  );
+}
+
+const panelCls = "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 transition-shadow duration-150 hover:shadow-md dark:hover:shadow-black/30";
+const panelTitleCls = "text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2";
+
+export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setTab, theme, onLicenseClick, currentUser }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
   const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
@@ -43,6 +113,20 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   const normFirma = (name) => (name || "").trim().toLowerCase();
   const brojUnikatnihKupaca = new Set(kupci.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
   const brojUnikatnihKupacaSaIstekom = new Set(isticuLicence.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
+
+  /* ---- Trendovi (u odnosu na prije 30 dana) ---- */
+  const potNovi30 = countCreatedBetween(potencijali, 30, 0);
+  const potNoviPrije = countCreatedBetween(potencijali, 60, 30);
+  const lidNovi30 = countCreatedBetween(lidovi, 30, 0);
+  const lidNoviPrije = countCreatedBetween(lidovi, 60, 30);
+  // Kupci prije 30 dana = firme koje su tada već imale licencu (start date stariji od 30 dana ili nepoznat)
+  const kupciPrije30 = new Set(
+    kupci.filter((k) => !k.start_date || daysDiff(k.start_date) <= -30).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
+  ).size;
+  // "Ističe ≤30 dana" kakvo je bilo prije 30 dana = licence s krajem do danas
+  const istekPrije30 = new Set(
+    kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 0).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
+  ).size;
 
   const ukupnoLidova = lidovi.length;
   const konvertovanoLidova = lidovi.filter((l) => l.status === "Konvertovan").length;
@@ -58,6 +142,9 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
     status: s,
     broj: forecastOvogMjeseca.filter((f) => f.status === s).length,
   }));
+  const ocekivanaProdaja = Math.round(
+    forecastOvogMjeseca.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0) * getForecastStatusWeight(f.status), 0)
+  );
 
   const RANK = { Isteklo: 3, "Ističe uskoro": 2, Aktivno: 1, Nepoznato: 0 };
   const companyStatusMap = new Map();
@@ -71,10 +158,80 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   const licencaChartData = ["Aktivno", "Ističe uskoro", "Isteklo"]
     .map((label) => ({ name: label, value: Array.from(companyStatusMap.values()).filter((v) => v === label).length }))
     .filter((d) => d.value > 0);
+  const licencaUkupno = licencaChartData.reduce((s, d) => s + d.value, 0);
+
+  /* ---- Pozdravni baner — sadržaj zavisi od odjela prijavljenog kolege ---- */
+  const odjel = getColleagueDept(currentUser);
+  const [danas, setDanas] = useState({ datum: "", pozdrav: "" });
+  useEffect(() => {
+    const d = new Date();
+    let datum = d.toLocaleDateString("bs-BA", { weekday: "long", day: "numeric", month: "long" });
+    datum = datum.charAt(0).toUpperCase() + datum.slice(1);
+    const h = d.getHours();
+    const pozdrav = h < 11 ? "Dobro jutro" : h < 18 ? "Dobar dan" : "Dobro veče";
+    setDanas({ datum, pozdrav });
+  }, []);
+  const ime = (currentUser || "").split(" ")[0];
+
+  // Licence koje ističu u tekućem kalendarskom mjesecu
+  const licenceOvajMjesec = kupci.filter((k) => k.end_date && String(k.end_date).slice(0, 7) === tekuciMjesec);
+  const brojLicenciIstek = licenceOvajMjesec.reduce((s, k) => s + (Number(k.broj_licenci) || 1), 0);
+  const brojFirmiIstek = new Set(licenceOvajMjesec.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
+  const recenicaIstek =
+    brojLicenciIstek === 0
+      ? "U ovom mjesecu ne ističe nijedna licenca."
+      : `U ovom mjesecu ${plural(brojLicenciIstek, "ističe", "ističu", "ističe")} ${brojLicenciIstek} ${plural(brojLicenciIstek, "licenca", "licence", "licenci")} kod ${brojFirmiIstek} ${plural(brojFirmiIstek, "firme", "firme", "firmi")}.`;
+
+  let baner = null;
+  if (odjel === "Prodaja") {
+    const mojForecast = forecastOvogMjeseca.filter((f) => f.prodavac === currentUser);
+    const mojeProdano = mojForecast.filter((f) => isForecastWon(f.status)).reduce((s, f) => s + (Number(f.broj_licenci) || 0), 0);
+    const mojeOtvorene = new Set(
+      mojForecast.filter((f) => !isForecastWon(f.status) && !isForecastLost(f.status)).map((f) => normFirma(f.kupac)).filter(Boolean)
+    ).size;
+    baner = {
+      recenica: recenicaIstek,
+      onRecenica: () => setTab("kupci"),
+      brojevi: [
+        { value: mojeProdano, label: "Prodano lic. ovog mj.", onClick: () => setTab("forecast") },
+        { value: mojeOtvorene, label: "Otvorene ponude", onClick: () => setTab("forecast") },
+      ],
+    };
+  } else if (odjel === "Tehnička podrška") {
+    const podrskaOvogMjeseca = podrska.filter((s) => s.datum && String(s.datum).slice(0, 7) === tekuciMjesec);
+    const mojeIntervencije = podrskaOvogMjeseca.filter((s) => s.tehnicar === currentUser).length;
+    const kupciPodrskaIstice = new Set(
+      kupci.filter((k) => k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
+    ).size;
+    const n = podrskaOvogMjeseca.length;
+    baner = {
+      recenica: `${recenicaIstek} Intervencija podrške ovog mjeseca: ${n}.`,
+      onRecenica: () => setTab("kupci"),
+      brojevi: [
+        { value: mojeIntervencije, label: "Moje intervencije ovog mj.", onClick: () => setTab("podrska") },
+        { value: kupciPodrskaIstice, label: "Podrška ističe ≤30 dana", onClick: () => setTab("kupci") },
+      ],
+    };
+  } else if (odjel === "Marketing") {
+    const noviLidovi = lidovi.filter((l) => l.created_at && String(l.created_at).slice(0, 7) === tekuciMjesec).length;
+    const recenica =
+      noviLidovi === 0
+        ? "Ovog mjeseca još nije stigao nijedan novi lid."
+        : plural(noviLidovi, `Ovog mjeseca je stigao ${noviLidovi} novi lid.`, `Ovog mjeseca su stigla ${noviLidovi} nova lida.`, `Ovog mjeseca je stiglo ${noviLidovi} novih lidova.`);
+    baner = {
+      recenica,
+      onRecenica: () => setTab("lidovi"),
+      brojevi: [
+        { value: noviLidovi, label: "Novi lidovi ovog mj.", onClick: () => setTab("lidovi") },
+        { value: `${stopaKonverzije}%`, label: "Konverzija lidova", onClick: () => setTab("lidovi") },
+      ],
+    };
+  }
 
   const isDark = theme === "dark";
   const axisColor = isDark ? "#94a3b8" : "#64748b";
   const gridColor = isDark ? "#334155" : "#f1f5f9";
+  const labelColor = isDark ? "#e2e8f0" : "#0f172a";
   const tooltipStyle = {
     borderRadius: 10,
     border: isDark ? "1px solid #334155" : "1px solid #e2e8f0",
@@ -84,34 +241,78 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   };
 
   return (
-    <div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali} accent="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" onClick={() => setTab("potencijali")} />
-        <StatCard icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi} accent="bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" onClick={() => setTab("lidovi")} />
-        <StatCard icon={Building2} label="Kupci" value={brojUnikatnihKupaca} accent="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" onClick={() => setTab("kupci")} />
-        <StatCard icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} accent="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" onClick={() => setTab("kupci")} />
+    <div className="space-y-5">
+      {baner && (
+        <div className="rounded-2xl px-6 py-6 sm:px-8 sm:py-7 flex flex-col md:flex-row md:items-center md:justify-between gap-5 bg-gradient-to-br from-teal-700 via-teal-600 to-teal-500 shadow-lg shadow-teal-600/20 dark:shadow-black/30">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-teal-100">{danas.datum || "\u00a0"}</p>
+            <h2 className="text-2xl sm:text-[28px] font-bold text-white mt-1 tracking-tight">{danas.pozdrav ? `${danas.pozdrav}, ${ime}` : `Zdravo, ${ime}`}</h2>
+            <button onClick={baner.onRecenica} className="text-sm text-teal-50 mt-1.5 hover:text-white hover:underline text-left">
+              {baner.recenica}
+            </button>
+          </div>
+          <div className="flex gap-3 shrink-0">
+            {baner.brojevi.map((b) => (
+              <button key={b.label} onClick={b.onClick} className="rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 px-5 py-3 text-center min-w-[120px] transition-colors">
+                <div className="text-2xl font-bold text-white">{b.value}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-teal-100">{b.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali}
+          accent="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" onClick={() => setTab("potencijali")}
+          trend={pctChange(potNovi30, potNoviPrije)}
+          trendTitle={`Novih u zadnjih 30 dana: ${potNovi30} (prethodnih 30 dana: ${potNoviPrije})`}
+          caption={`${potNovi30} novih u 30 dana`}
+        />
+        <StatCard
+          icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi}
+          accent="bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" onClick={() => setTab("lidovi")}
+          trend={pctChange(lidNovi30, lidNoviPrije)}
+          trendTitle={`Novih u zadnjih 30 dana: ${lidNovi30} (prethodnih 30 dana: ${lidNoviPrije})`}
+          caption={`${lidNovi30} novih u 30 dana`}
+        />
+        <StatCard
+          icon={Building2} label="Kupci" value={brojUnikatnihKupaca}
+          accent="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" onClick={() => setTab("kupci")}
+          trend={pctChange(brojUnikatnihKupaca, kupciPrije30)}
+          trendTitle={`Prije 30 dana: ${kupciPrije30} kupaca`}
+          caption="u odnosu na prije 30 dana"
+        />
+        <StatCard
+          icon={AlertTriangle} label="Licence ističu ≤30 dana" value={brojUnikatnihKupacaSaIstekom} warn
+          accent="bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400" onClick={() => setTab("kupci")}
+          trend={pctChange(brojUnikatnihKupacaSaIstekom, istekPrije30)} trendInvert
+          trendTitle={`Prije 30 dana: ${istekPrije30} firmi`}
+          caption="u odnosu na prije 30 dana"
+        />
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mb-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.005]">
-        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-slate-400 dark:text-slate-500" /> Konverzija lidova
+      <div className={panelCls}>
+        <h3 className={panelTitleCls + " mb-4"}>
+          <TrendingUp size={16} className="text-slate-400 dark:text-slate-500" /> Konverzija lidova
         </h3>
         <div className="flex flex-col sm:flex-row items-stretch gap-3">
-          <div className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 dark:border-slate-700 p-4 text-center">
+          <div className="flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 p-4 text-center">
             <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{ukupnoLidova}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ukupno lidova</div>
           </div>
           <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
             <ChevronRight size={20} />
           </div>
-          <div className="flex-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50 p-4 text-center">
+          <div className="flex-1 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50 p-4 text-center">
             <div className="text-2xl font-bold text-violet-700 dark:text-violet-400">{konvertovanoLidova}</div>
             <div className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">Konvertovano u potencijal {ukupnoLidova > 0 && `(${stopaKonverzije}%)`}</div>
           </div>
           <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
             <ChevronRight size={20} />
           </div>
-          <div className="flex-1 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/50 p-4 text-center">
+          <div className="flex-1 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/50 p-4 text-center">
             <div className="text-2xl font-bold text-green-700 dark:text-green-400">{dobijenoIzLeada}</div>
             <div className="text-xs text-green-600 dark:text-green-400 mt-0.5">Postalo kupac {konvertovanoLidova > 0 && `(${stopaDobijanja}%)`}</div>
           </div>
@@ -123,60 +324,72 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
-            <Target size={15} className="text-slate-400 dark:text-slate-500" /> Forecast po statusu ({fmtMonth(tekuciMjesec)})
-          </h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={forecastChartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div className={panelCls + " lg:col-span-3"}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+            <h3 className={panelTitleCls}>
+              <Target size={16} className="text-slate-400 dark:text-slate-500" /> Forecast po statusu — {fmtMonth(tekuciMjesec)}
+            </h3>
+            <button onClick={() => setTab("forecast")} className="text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 px-3 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors">
+              Očekivana prodaja: {ocekivanaProdaja} lic.
+            </button>
+          </div>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={forecastChartData} margin={{ top: 22, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="status" tick={{ fontSize: 11, fill: axisColor }} interval={0} angle={-20} textAnchor="end" height={55} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [value, "Broj stavki"]} />
-              <Bar dataKey="broj" radius={[6, 6, 0, 0]} cursor="pointer">
+              <XAxis dataKey="status" interval={0} height={42} tickLine={false} axisLine={{ stroke: gridColor }} tick={<StatusTick fill={axisColor} />} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: isDark ? "rgba(148,163,184,0.08)" : "rgba(15,23,42,0.04)" }} formatter={(value) => [value, "Broj stavki"]} />
+              <Bar dataKey="broj" radius={[8, 8, 0, 0]} maxBarSize={56} cursor="pointer">
+                <LabelList dataKey="broj" position="top" style={{ fontSize: 12, fontWeight: 700, fill: labelColor }} />
                 {forecastChartData.map((d, i) => (
-                  <Cell
-                    key={i}
-                    fill={FORECAST_STATUS_HEX[d.status] || "#94a3b8"}
-                    onClick={() => setTab("forecast")}
-                  />
+                  <Cell key={i} fill={FORECAST_STATUS_HEX[d.status] || "#94a3b8"} onClick={() => setTab("forecast")} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {FORECAST_STATUSI.map((s) => <ForecastStatusBadge key={s} status={s} />)}
-          </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-1.5">
-            <Building2 size={15} className="text-slate-400 dark:text-slate-500" /> Kupci po statusu licence
+        <div className={panelCls + " lg:col-span-2"}>
+          <h3 className={panelTitleCls + " mb-5"}>
+            <Building2 size={16} className="text-slate-400 dark:text-slate-500" /> Kupci po statusu licence
           </h3>
           {licencaChartData.length === 0 ? (
             <p className="text-sm text-slate-400 dark:text-slate-500 py-16 text-center">Nema podataka o licencama.</p>
           ) : (
-            <div className="flex items-center gap-4">
-              <ResponsiveContainer width="60%" height={220}>
-                <PieChart>
-                  <Pie data={licencaChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2} cursor={onLicenseClick ? "pointer" : "default"}>
-                    {licencaChartData.map((d, i) => (
-                      <Cell key={i} fill={LICENCA_HEX[d.name]} onClick={() => onLicenseClick && onLicenseClick(d.name)} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex-1 space-y-2">
+            <div className="flex items-center gap-5">
+              <div className="relative w-[55%] shrink-0">
+                <ResponsiveContainer width="100%" height={230}>
+                  <PieChart>
+                    <Pie data={licencaChartData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={2} stroke="none" cursor={onLicenseClick ? "pointer" : "default"}>
+                      {licencaChartData.map((d, i) => (
+                        <Cell key={i} fill={LICENCA_HEX[d.name]} onClick={() => onLicenseClick && onLicenseClick(d.name)} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={tooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-2xl font-bold text-slate-900 dark:text-slate-100 leading-none">{licencaUkupno}</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">ukupno</span>
+                </div>
+              </div>
+              <div className="flex-1 space-y-3">
                 {licencaChartData.map((d) => (
-                  <div key={d.name} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-400 dark:text-slate-300">
+                  <button
+                    key={d.name}
+                    onClick={() => onLicenseClick && onLicenseClick(d.name)}
+                    className="w-full flex items-center justify-between text-sm rounded-lg px-2 py-1.5 -mx-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                  >
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: LICENCA_HEX[d.name] }} />
                       {d.name}
                     </span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{d.value}</span>
-                  </div>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {d.value}
+                      <span className="text-xs font-normal text-slate-400 dark:text-slate-500 ml-1">({Math.round((d.value / licencaUkupno) * 100)}%)</span>
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -184,34 +397,34 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className={panelCls}>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <Bell size={15} className="text-slate-400 dark:text-slate-500" /> Podsjetnici (narednih 7 dana)
+            <h3 className={panelTitleCls}>
+              <Bell size={16} className="text-slate-400 dark:text-slate-500" /> Podsjetnici (narednih 7 dana)
             </h3>
-            <button onClick={() => setTab("podsjetnici")} className="text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline flex items-center gap-0.5">
+            <button onClick={() => setTab("podsjetnici")} className="text-xs text-teal-600 dark:text-teal-400 font-semibold hover:underline flex items-center gap-0.5">
               Svi <ChevronRight size={13} />
             </button>
           </div>
           {podsjetnici.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Nema podsjetnika u narednih 7 dana.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 py-8 text-center">Nema podsjetnika u narednih 7 dana.</p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {podsjetnici.slice(0, 6).map((r) => {
                 const u = reminderUrgency(r.datum);
                 return (
-                  <li key={r.tip + r.id} className="py-2.5 flex items-center gap-3">
+                  <li key={r.tip + r.id} className="py-3 flex items-center gap-3">
                     <span className={"w-2 h-2 rounded-full shrink-0 " + u.dotCls} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
-                        <span className="font-medium">{r.firma}</span> — {r.opis || "podsjetnik"}
+                        <span className="font-semibold">{r.firma}</span> — {r.opis || "podsjetnik"}
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                         {r.tip} · {r.kolega} · {fmtDate(r.datum)}
                       </p>
                     </div>
-                    <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + u.cls}>{u.label}</span>
+                    <span className={"text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 " + u.cls}>{u.label}</span>
                   </li>
                 );
               })}
@@ -219,32 +432,32 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.008]">
+        <div className={panelCls}>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <AlertTriangle size={15} className="text-slate-400 dark:text-slate-500" /> Licence koje ističu
+            <h3 className={panelTitleCls}>
+              <AlertTriangle size={16} className="text-slate-400 dark:text-slate-500" /> Licence koje ističu
             </h3>
-            <button onClick={() => setTab("kupci")} className="text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline flex items-center gap-0.5">
+            <button onClick={() => setTab("kupci")} className="text-xs text-teal-600 dark:text-teal-400 font-semibold hover:underline flex items-center gap-0.5">
               Svi kupci <ChevronRight size={13} />
             </button>
           </div>
           {isticuLicence.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Nema licenci koje ističu u narednih 30 dana.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 py-8 text-center">Nema licenci koje ističu u narednih 30 dana.</p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {isticuLicence.slice(0, 6).map((k) => {
                 const s = licenseStatus(k.end_date);
                 return (
-                  <li key={k.id} className="py-2.5 flex items-center gap-3">
+                  <li key={k.id} className="py-3 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
-                        <span className="font-medium">{k.naziv_firme}</span> — {k.naziv_proizvoda}
+                        <span className="font-semibold">{k.naziv_firme}</span> — {k.naziv_proizvoda}
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                         {k.grad} · ističe {fmtDate(k.end_date)}
                       </p>
                     </div>
-                    <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + s.cls}>{s.label}</span>
+                    <span className={"text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 " + s.cls}>{s.label}</span>
                   </li>
                 );
               })}
@@ -253,21 +466,21 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 mt-4 transition-all duration-150 hover:shadow-md dark:hover:shadow-black/30 hover:scale-[1.005]">
-        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-1.5">
-          <Wrench size={15} className="text-slate-400 dark:text-slate-500" /> Posljednja tehnička podrška
+      <div className={panelCls}>
+        <h3 className={panelTitleCls + " mb-3"}>
+          <Wrench size={16} className="text-slate-400 dark:text-slate-500" /> Posljednja tehnička podrška
         </h3>
         {podrska.length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Još nema unesenih intervencija podrške.</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500 py-8 text-center">Još nema unesenih intervencija podrške.</p>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {[...podrska].sort((a, b) => new Date(b.datum) - new Date(a.datum)).slice(0, 5).map((s) => (
-              <li key={s.id} className="py-2.5 flex items-center gap-3">
+              <li key={s.id} className="py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
-                    <span className="font-medium">{s.firma}</span> — {s.opis}
+                    <span className="font-semibold">{s.firma}</span> — {s.opis}
                   </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                     {s.tehnicar} · {fmtDate(s.datum)}
                   </p>
                 </div>
