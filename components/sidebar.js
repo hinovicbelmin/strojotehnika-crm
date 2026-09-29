@@ -94,11 +94,11 @@ export function Sidebar({
         (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex sticky top-0 h-screen")
       }
     >
-      {/* Logo */}
+      {/* Logo — u skupljenom meniju samo znak: zauzima lijevih 247 od 865 px širine slike, pa je na visini 30px širok ~51px */}
       <div className={mini ? "flex justify-center pt-5 pb-4" : "px-5 pt-6 pb-5"}>
         {mini ? (
-          <div className="w-11 h-9 overflow-hidden flex items-center" title="Strojotehnika">
-            <img src="/logo.png" alt="Strojotehnika" className="h-8 w-auto max-w-none" />
+          <div className="overflow-hidden flex items-center" style={{ width: 51, height: 30 }} title="Strojotehnika">
+            <img src="/logo.png" alt="Strojotehnika" className="max-w-none" style={{ height: 30, width: "auto" }} />
           </div>
         ) : (
           <img src="/logo.png" alt="Strojotehnika" className="h-9 w-auto" />
