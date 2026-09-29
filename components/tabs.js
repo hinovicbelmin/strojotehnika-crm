@@ -165,8 +165,9 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   const [danas, setDanas] = useState({ datum: "", pozdrav: "" });
   useEffect(() => {
     const d = new Date();
-    let datum = d.toLocaleDateString("bs-BA", { weekday: "long", day: "numeric", month: "long" });
-    datum = datum.charAt(0).toUpperCase() + datum.slice(1);
+    // Ručno formatiranje (ne oslanja se na jezik preglednika): 29.9.2026 UTO
+    const dani = ["NED", "PON", "UTO", "SRI", "ČET", "PET", "SUB"];
+    const datum = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${dani[d.getDay()]}`;
     const h = d.getHours();
     const pozdrav = h < 11 ? "Dobro jutro" : h < 18 ? "Dobar dan" : "Dobro veče";
     setDanas({ datum, pozdrav });
