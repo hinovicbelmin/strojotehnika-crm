@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
-  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept,
+  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
@@ -61,7 +61,12 @@ export default function HomePage() {
         router.push("/login");
       } else {
         setSession(data.session);
-        setCurrentUser(localStorage.getItem("crm_trenutni_korisnik") || "");
+        let saved = localStorage.getItem("crm_trenutni_korisnik") || "";
+        if (RENAMED_COLLEAGUES[saved]) {
+          saved = RENAMED_COLLEAGUES[saved];
+          localStorage.setItem("crm_trenutni_korisnik", saved);
+        }
+        setCurrentUser(saved);
       }
       setCheckingAuth(false);
     });
@@ -613,6 +618,7 @@ export default function HomePage() {
                   forecast={forecast}
                   setTab={setTab}
                   theme={theme}
+                  currentUser={currentUser}
                   onLicenseClick={(label) => { setChartFilter({ tab: "kupci", value: label }); setTab("kupci"); }}
                 />
               )}
