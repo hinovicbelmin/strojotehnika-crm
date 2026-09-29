@@ -7,6 +7,7 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import {
   COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
+  getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
@@ -15,6 +16,7 @@ import {
 import { ForecastTab } from "../components/forecast";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
+import { Sidebar } from "../components/sidebar";
 import { AppSkeleton } from "../components/skeleton";
 import { ToastStack } from "../components/toast";
 
@@ -44,6 +46,7 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState("");
   const [theme, setTheme] = useState("light");
   const [density, setDensity] = useState("comfortable");
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [viewingCompany, setViewingCompany] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [chartFilter, setChartFilter] = useState(null); // { tab: 'potencijali'|'kupci', value: string }
@@ -117,7 +120,16 @@ export default function HomePage() {
     document.documentElement.classList.toggle("dark", saved === "dark");
     const savedDensity = localStorage.getItem("crm_density") || "comfortable";
     setDensity(savedDensity);
+    setNavCollapsed(localStorage.getItem("crm_sidebar_collapsed") === "1");
   }, []);
+
+  const toggleNavCollapsed = () => {
+    setNavCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("crm_sidebar_collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -501,46 +513,49 @@ export default function HomePage() {
 
   const ActiveIcon = TABS.find((t) => t.id === tab)?.icon || Home;
 
+  // Brojači u lijevom meniju
+  const tekuciMjesec = currentMonthStr();
+  const navBadges = {
+    podsjetnici: {
+      count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length,
+      tone: "alert", hint: "za danas / kasni",
+    },
+    kupci: {
+      count: new Set(
+        kupci.filter((k) => k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30)
+          .map((k) => (k.naziv_firme || "").trim().toLowerCase()).filter(Boolean)
+      ).size,
+      tone: "warn", hint: "firmi — licenca ističe ≤30 dana",
+    },
+    lidovi: {
+      count: lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length,
+      tone: "muted", hint: "aktivnih lidova",
+    },
+    forecast: {
+      count: forecast.filter((f) => f.mjesec === tekuciMjesec && !isForecastWon(f.status) && !isForecastLost(f.status)).length,
+      tone: "muted", hint: "otvorenih stavki ovog mjeseca",
+    },
+  };
+
   return (
     <div className="w-full min-h-screen bg-slate-50 dark:bg-slate-950 flex text-slate-800 dark:text-slate-200 transition-colors duration-200">
       {/* Sidebar */}
-      <aside className={"bg-slate-900 dark:bg-slate-950 text-slate-300 w-60 shrink-0 flex-col border-r border-transparent dark:border-slate-800 " + (navOpen ? "flex fixed inset-y-0 left-0 z-40" : "hidden md:flex")}>
-        <div className="px-5 py-5 border-b border-slate-800">
-          <img src="/logo.png" alt="Strojotehnika" className="h-10 w-auto" />
-          <p className="text-xs text-slate-400 mt-2">CRM · Prodaja · Podrška · Marketing</p>
-        </div>
-        <nav className="flex-1 py-3 px-2 space-y-0.5">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
-            const restricted = isTehnicar && TECH_RESTRICTED_TABS.includes(t.id);
-            return (
-              <button
-                key={t.id}
-                onClick={() => { setTab(t.id); setNavOpen(false); }}
-                className={
-                  "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 " +
-                  (restricted
-                    ? "text-slate-600 hover:bg-slate-800/40"
-                    : active
-                    ? "bg-slate-800 text-white border-l-2 border-teal-400 pl-2.5"
-                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200")
-                }
-              >
-                <Icon size={16} />
-                {t.label}
-                {restricted && <Lock size={12} className="ml-auto shrink-0" />}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="px-2 pb-3">
-          <button onClick={signOut} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors duration-150">
-            <LogOut size={16} /> Odjava
-          </button>
-        </div>
-        <div className="px-4 py-4 border-t border-slate-800 text-xs text-slate-500">11 kolega · Zenica &amp; Zagreb</div>
-      </aside>
+      <Sidebar
+        tabs={TABS}
+        tab={tab}
+        onSelectTab={(id) => { setTab(id); setNavOpen(false); }}
+        navOpen={navOpen}
+        isRestricted={(id) => isTehnicar && TECH_RESTRICTED_TABS.includes(id)}
+        badges={navBadges}
+        currentUser={currentUser}
+        currentDept={getColleagueDept(currentUser)}
+        onChooseUser={chooseUser}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onSignOut={signOut}
+        collapsed={navCollapsed}
+        onToggleCollapsed={toggleNavCollapsed}
+      />
 
       {navOpen && <div className="fixed inset-0 bg-slate-900/40 z-30 md:hidden" onClick={() => setNavOpen(false)} />}
 
@@ -573,14 +588,14 @@ export default function HomePage() {
             </button>
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150"
+              className="md:hidden p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors duration-150"
               title={theme === "dark" ? "Prebaci na svijetlu temu" : "Prebaci na tamnu temu"}
             >
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline">Ja sam:</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline md:hidden">Ja sam:</span>
             <select
-              className="text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors duration-150"
+              className="md:hidden text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors duration-150"
               value={currentUser}
               onChange={(e) => chooseUser(e.target.value)}
             >
@@ -592,7 +607,7 @@ export default function HomePage() {
 
         {!currentUser && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/40 px-6 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-            <AlertTriangle size={13} /> Odaberi svoje ime gore desno da bi se ispravno bilježilo ko unosi/ažurira podatke.
+            <AlertTriangle size={13} /> <span className="hidden md:inline">Odaberi svoje ime dolje lijevo u meniju da bi se ispravno bilježilo ko unosi/ažurira podatke.</span><span className="md:hidden">Odaberi svoje ime gore desno da bi se ispravno bilježilo ko unosi/ažurira podatke.</span>
           </div>
         )}
 
