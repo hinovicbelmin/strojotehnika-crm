@@ -6,7 +6,7 @@ import { COLLEAGUES } from "../lib/crm";
 // Raspored tabova u grupe (redoslijed = redoslijed u meniju)
 const GROUPS = [
   { label: null, items: ["pregled"] },
-  { label: "Prodaja", items: ["forecast", "potencijali", "lidovi"] },
+  { label: "Prodaja", items: ["forecast", "potencijali", "lidovi", "kalkulator", "cjenovnik"] },
   { label: "Kupci i podrška", items: ["kupci", "podrska"] },
   { label: "Moj dan", items: ["podsjetnici"] },
 ];
