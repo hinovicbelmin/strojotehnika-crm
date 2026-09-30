@@ -186,7 +186,10 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   let baner = null;
   if (odjel === "Prodaja") {
     const mojForecast = forecastOvogMjeseca.filter((f) => f.prodavac === currentUser);
-    const mojeProdano = mojForecast.filter((f) => isForecastWon(f.status)).reduce((s, f) => s + (Number(f.broj_licenci) || 0), 0);
+    // Zatvorene ponude = broj firmi kojima je ovog mjeseca prodata licenca (status Dobijeno)
+    const mojeZatvorene = new Set(
+      mojForecast.filter((f) => isForecastWon(f.status)).map((f) => normFirma(f.kupac)).filter(Boolean)
+    ).size;
     const mojeOtvorene = new Set(
       mojForecast.filter((f) => !isForecastWon(f.status) && !isForecastLost(f.status)).map((f) => normFirma(f.kupac)).filter(Boolean)
     ).size;
@@ -194,7 +197,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
       recenica: recenicaIstek,
       onRecenica: () => setTab("kupci"),
       brojevi: [
-        { value: mojeProdano, label: "Prodano lic. ovog mj.", onClick: () => setTab("forecast") },
+        { value: mojeZatvorene, label: "Zatvorene ponude", onClick: () => setTab("forecast") },
         { value: mojeOtvorene, label: "Otvorene ponude", onClick: () => setTab("forecast") },
       ],
     };
