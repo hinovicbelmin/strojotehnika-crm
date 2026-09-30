@@ -769,17 +769,26 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
       {showImport && (
         <ImportModal
           title="Uvezi bazu lidova"
-          columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status"]}
+          columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status", "Napomena (nije obavezno)", "Datum leada (nije obavezno)"]}
           existingNames={data.map((l) => l.naziv_firme)}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
+            // Datum leada: prihvata 2026-05-19 ili 19.5.2026.
+            const parseLeadDate = (s) => {
+              const t = String(s || "").trim();
+              let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (m) return `${m[1]}-${m[2]}-${m[3]}T09:00:00.000Z`;
+              m = t.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+              if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}T09:00:00.000Z`;
+              return null;
+            };
             const novi = rows.map((r) => ({
               naziv_firme: r[0] || "", grad: r[1] || "", drzava: r[2] || "", kontakt_osoba: r[3] || "",
               telefon: r[4] || "", email: r[5] || "", izvor: r[6] || "",
               kolega: COLLEAGUE_NAMES.includes(r[7]) ? r[7] : currentUser || "",
               status: LEAD_STATUSI.includes(r[8]) ? r[8] : "Novi",
-              napomena: "", podsjetnik_datum: null, podsjetnik_opis: "",
-              created_by: currentUser || "Uvoz", created_at: new Date().toISOString(),
+              napomena: r[9] || "", podsjetnik_datum: null, podsjetnik_opis: "",
+              created_by: currentUser || "Uvoz", created_at: parseLeadDate(r[10]) || new Date().toISOString(),
               updated_by: currentUser || "Uvoz", updated_at: new Date().toISOString(),
             }));
             await onBulkImport(novi);
