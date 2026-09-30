@@ -1,10 +1,12 @@
 "use client";
-import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer } from "lucide-react";
-import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr } from "../lib/crm";
+import { useState } from "react";
+import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users } from "lucide-react";
+import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
 
+// Poređenje naziva firmi preko ključa ("M2R shpk" = "M2R SH PK", "Bezmana" = "BEZMANA DOO")
 function norm(s) {
-  return (s || "").trim().toLowerCase();
+  return companyKey(s || "");
 }
 
 // Odredi naziv koji treba prikazati za licencu i da li se uopšte broji kao licenca:
@@ -22,7 +24,14 @@ function licenseDisplayName(k) {
 
 export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, onClose }) {
   const target = norm(name);
-  const potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
+  const [sveHistorija, setSveHistorija] = useState(false);
+  let potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
+  if (!potencijal) {
+    const m = findCompanyMatch(name, buildCompanyNameIndex(potencijali.map((p) => p.naziv_firme)));
+    if (m) potencijal = potencijali.find((p) => p.naziv_firme === m);
+  }
+  const prodavaci = potencijal ? [...new Set([potencijal.kolega, ...(potencijal.prodavaci || [])].filter((x) => x && x !== "Nedodijeljeno"))] : [];
+  const kontaktHistorija = potencijal ? [...(potencijal.historija || [])].sort((a, b) => (b.datum || "").localeCompare(a.datum || "")) : [];
   const licence = kupci
     .filter((k) => norm(k.naziv_firme) === target)
     .map((k) => ({ ...k, __displayName: licenseDisplayName(k) }))
@@ -59,11 +68,12 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
                 <span className="flex items-center gap-1"><MapPin size={13} className="text-slate-400" /> {[potencijal.grad, potencijal.drzava].filter(Boolean).join(", ")}</span>
               )}
               {potencijal.djelatnost && <span className="flex items-center gap-1"><Briefcase size={13} className="text-slate-400" /> {potencijal.djelatnost}</span>}
-              {potencijal.kolega && <span className="flex items-center gap-1"><User size={13} className="text-slate-400" /> {potencijal.kolega}</span>}
+              <span className="flex items-center gap-1"><User size={13} className="text-slate-400" /> {prodavaci.length ? prodavaci.join(", ") : "Nedodijeljeno"}</span>
+              {potencijal.adresa && <span className="flex items-center gap-1 basis-full text-slate-500 dark:text-slate-400"><MapPin size={13} className="text-slate-400" /> {potencijal.adresa}</span>}
             </div>
             {(potencijal.kontakt_osoba || potencijal.telefon || potencijal.email) && (
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-700 mt-1.5">
-                {potencijal.kontakt_osoba && <span>{potencijal.kontakt_osoba}</span>}
+                {potencijal.kontakt_osoba && <span className="font-medium">{potencijal.kontakt_osoba}{potencijal.kontakt_funkcija ? ` (${potencijal.kontakt_funkcija})` : ""}</span>}
                 {potencijal.telefon && <span className="flex items-center gap-1"><Phone size={12} /> {potencijal.telefon}</span>}
                 {potencijal.email && <span className="flex items-center gap-1"><Mail size={12} /> {potencijal.email}</span>}
               </div>
@@ -72,7 +82,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
               <div className="pt-1.5 space-y-1">
                 {potencijal.dodatni_kontakti.map((k, i) => (
                   <div key={i} className="flex flex-wrap gap-x-3 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="font-medium">{k.ime}</span>
+                    <span className="font-medium">{k.ime}{k.funkcija ? ` (${k.funkcija})` : ""}</span>
                     {k.telefon && <span>{k.telefon}</span>}
                     {k.email && <span>{k.email}</span>}
                   </div>
@@ -87,6 +97,30 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
           <p className="text-sm text-slate-400 dark:text-slate-500">Nema zapisa u Bazi potencijala za ovu firmu.</p>
         )}
       </div>
+
+      {/* Historija kontaktiranja (Baza potencijala) */}
+      {kontaktHistorija.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
+            <History size={13} /> Historija kontaktiranja ({kontaktHistorija.length})
+          </h4>
+          <div className="space-y-1.5">
+            {(sveHistorija ? kontaktHistorija : kontaktHistorija.slice(0, 6)).map((h, i) => (
+              <div key={i} className="bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 mb-0.5">
+                  <Calendar size={11} /> {h.datum ? fmtDate(h.datum) : "bez datuma"}{h.kolega ? ` · ${h.kolega}` : ""}{h.kontakt ? ` · ${h.kontakt}` : ""}
+                </div>
+                <p className="text-slate-700 dark:text-slate-300 whitespace-pre-line">{h.opis}</p>
+              </div>
+            ))}
+          </div>
+          {kontaktHistorija.length > 6 && (
+            <button onClick={() => setSveHistorija((v) => !v)} className="no-print text-xs text-teal-600 font-medium hover:underline mt-2">
+              {sveHistorija ? "Prikaži manje" : `Prikaži sve (${kontaktHistorija.length})`}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Licence */}
       <div className="mb-6">
