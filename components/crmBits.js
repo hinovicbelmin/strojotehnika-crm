@@ -1,5 +1,5 @@
 "use client";
-// Zajednički mali UI elementi za Bazu potencijala i Lidove (novi izgled)
+// Zajednički mali UI elementi za novi izgled tabova (Baza potencijala, Lidovi, Kupci, Podrška)
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, X } from "lucide-react";
 
@@ -21,6 +21,14 @@ const AVATAR_BOJE = {
   "Vedran Kovačić": "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
   "Nikola Grden": "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200",
   "Marija Puškarić": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
+  // tehnička podrška
+  "Ahmed Mujkanović": "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200",
+  "Kristian Gazdek": "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",
+  "Marin Šepac": "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200",
+  "Dino Pečenjev": "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200",
+  "Davor Volarić": "bg-pink-100 text-pink-800 dark:bg-pink-900/50 dark:text-pink-200",
+  "Petra Horvatić": "bg-stone-200 text-stone-700 dark:bg-stone-700/60 dark:text-stone-200",
+  "Miroslav Janković": "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-200",
 };
 const AVATAR_OSTALE = [
   "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-200",
