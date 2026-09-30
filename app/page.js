@@ -11,8 +11,9 @@ import {
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
-  PregledTab, PotencijaliTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
+  PregledTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
 } from "../components/tabs";
+import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
@@ -220,9 +221,9 @@ export default function HomePage() {
       () => deleteRow("potencijali", id)
     );
   };
-  const bulkImportPotencijali = async (rows) => {
+  const bulkImportPotencijali = async (rows, opts) => {
     try {
-      const inserted = await bulkInsert("potencijali", rows);
+      const inserted = await bulkInsert("potencijali", rows, opts);
       setPotencijali((prev) => [...inserted, ...prev]);
       showToast(`Uvezeno ${inserted.length} potencijala`);
     } catch (e) {
@@ -640,6 +641,7 @@ export default function HomePage() {
               {tab === "potencijali" && (
                 <PotencijaliTab
                   data={potencijali}
+                  kupci={kupci}
                   currentUser={currentUser}
                   onAdd={addPotencijal}
                   onUpdate={updatePotencijal}
