@@ -657,6 +657,7 @@ export default function HomePage() {
               {tab === "lidovi" && (
                 <LidoviTab
                   data={lidovi}
+                  potencijali={potencijali}
                   currentUser={currentUser}
                   onAdd={addLead}
                   onUpdate={updateLead}
