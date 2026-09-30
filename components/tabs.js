@@ -1,10 +1,11 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
   CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink, Square, CheckSquare,
   ArrowRight, Trophy, Newspaper, List, LayoutGrid,
+  RefreshCw, MoreHorizontal, Clock, KeyRound, GraduationCap, MessageSquare, Bug,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
@@ -12,9 +13,10 @@ import {
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
   getColleagueDept, getForecastStatusWeight, isForecastWon, isForecastLost,
+  COLLEAGUES, companyKey,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
-import { Avatar, StatusPill, FilterPill, PanelLabel, daysAgo, fmtN, headerBtnSec } from "./crmBits";
+import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, fmtN, headerBtnSec } from "./crmBits";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
@@ -1078,18 +1080,88 @@ export function LidoviTab({ data, potencijali = [], currentUser, onAdd, onUpdate
 }
 
 /* ====================================================================== */
+/*  ZAJEDNIČKO: KPI pločica, meni "više", firme                            */
+/* ====================================================================== */
+
+const KPI_TON = {
+  neutral: ["bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700", "text-slate-900 dark:text-slate-100", "text-slate-600 dark:text-slate-300"],
+  amber: ["bg-amber-50/70 dark:bg-amber-900/20 border-amber-200/80 dark:border-amber-900/50", "text-amber-800 dark:text-amber-300", "text-amber-700 dark:text-amber-300"],
+  blue: ["bg-blue-50/70 dark:bg-blue-900/20 border-blue-200/80 dark:border-blue-900/50", "text-blue-700 dark:text-blue-300", "text-blue-700 dark:text-blue-300"],
+  red: ["bg-red-50/70 dark:bg-red-900/20 border-red-200/80 dark:border-red-900/50", "text-red-700 dark:text-red-300", "text-red-700 dark:text-red-300"],
+};
+function KpiTile({ icon: Icon, label, value, sub, tone = "neutral", active, onClick }) {
+  const [box, val, ic] = KPI_TON[tone];
+  return (
+    <button type="button" onClick={onClick}
+      className={"flex-1 min-w-[190px] text-left rounded-2xl border px-4 py-3.5 flex items-start gap-3 transition-all hover:shadow-sm " + box +
+        (active ? " ring-2 ring-teal-500 dark:ring-teal-400" : "")}>
+      <span className={"w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-inherit inline-flex items-center justify-center shrink-0 " + ic}>
+        <Icon size={17} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</span>
+        <span className={"block text-2xl sm:text-[26px] font-bold tracking-tight leading-tight " + val}>{value}</span>
+        <span className="block text-xs text-slate-500 dark:text-slate-400">{sub}</span>
+      </span>
+    </button>
+  );
+}
+
+// Dugme "⋯" s padajućim menijem (npr. rijetke / opasne akcije)
+function IconMenu({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" aria-label={label} title={label} aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        className={headerBtnSec + " w-9 justify-center px-0"}>
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1.5 z-30 w-60 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-1.5">
+          {items.map((it) => (
+            <button key={it.label} type="button" disabled={it.disabled} onClick={() => { setOpen(false); it.onClick(); }}
+              className={"w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm disabled:opacity-40 " +
+                (it.danger ? "text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" : "text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+              {it.icon && <it.icon size={15} />} {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PRODAVACI_IMENA = COLLEAGUES.filter((c) => c.dept === "Prodaja").map((c) => c.name);
+// glavni + dodatni prodavač firme iz Baze potencijala
+function prodavaciPotencijala(p) {
+  return [...new Set([p.kolega, ...(p.prodavaci || [])].filter((x) => x && x !== "Nedodijeljeno"))];
+}
+
+const DRZAVA_KOD = {
+  "Bosna i Hercegovina": "BA", Hrvatska: "HR", Albanija: "AL", Srbija: "RS", Slovenija: "SI",
+  "Crna Gora": "ME", Kosovo: "XK", "Sjeverna Makedonija": "MK", Austrija: "AT", Njemačka: "DE", Italija: "IT",
+};
+
+/* ====================================================================== */
 /*  KUPCI                                                                   */
 /* ====================================================================== */
 
-function KupacForm({ initial, currentUser, onSave, onClose }) {
-  const [f, setF] = useState(
-    initial || {
-      naziv_firme: "", grad: "", drzava: "", adresa: "", postanski_broj: "",
-      serijski_broj: "", broj_licenci: "",
-      naziv_proizvoda: "", naziv_proizvoda_2: "", revenue_type: "", izvorni_status: "",
-      start_date: "", end_date: "", napomena: "",
-    }
-  );
+const KUPAC_PRAZNO = {
+  naziv_firme: "", grad: "", drzava: "", adresa: "", postanski_broj: "",
+  serijski_broj: "", broj_licenci: "",
+  naziv_proizvoda: "", naziv_proizvoda_2: "", revenue_type: "", izvorni_status: "",
+  start_date: "", end_date: "", napomena: "",
+};
+
+function KupacForm({ initial, prefill, currentUser, onSave, onClose }) {
+  const [f, setF] = useState(initial || { ...KUPAC_PRAZNO, ...(prefill || {}) });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const submit = async () => {
@@ -1098,7 +1170,7 @@ function KupacForm({ initial, currentUser, onSave, onClose }) {
     try {
       const payload = {
         ...f,
-        broj_licenci: f.broj_licenci === "" ? null : Number(f.broj_licenci),
+        broj_licenci: f.broj_licenci === "" || f.broj_licenci == null ? null : Number(f.broj_licenci),
         start_date: f.start_date || null,
         end_date: f.end_date || null,
         updated_by: currentUser, updated_at: new Date().toISOString(),
@@ -1113,8 +1185,9 @@ function KupacForm({ initial, currentUser, onSave, onClose }) {
       setBusy(false);
     }
   };
+  const title = initial ? "Uredi licencu" : prefill ? `Nova licenca — ${prefill.naziv_firme}` : "Novi kupac";
   return (
-    <Modal title={initial ? "Uredi kupca" : "Novi kupac"} onClose={onClose} wide>
+    <Modal title={title} onClose={onClose} wide>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Naziv firme" required><input className={inputCls} value={f.naziv_firme} onChange={set("naziv_firme")} /></Field>
         <Field label="Naziv proizvoda" hint="npr. SolidWorks Standard"><input className={inputCls} value={f.naziv_proizvoda || ""} onChange={set("naziv_proizvoda")} /></Field>
@@ -1141,277 +1214,655 @@ function KupacForm({ initial, currentUser, onSave, onClose }) {
   );
 }
 
-function SortableHeader({ label, field, sortField, sortDir, onSort, align }) {
-  const active = sortField === field;
+// ---------- pomoćne funkcije za licence ----------
+const K_ROKOVI = ["Sve", "Ističe u 30 dana", "Obnova za 31–90 dana", "Isteklo", "Aktivno"];
+const K_PRESET = { "Ističe uskoro": "Ističe u 30 dana", Isteklo: "Isteklo", Aktivno: "Aktivno" };
+const POZNATI_PROIZVODI = ["SOLIDWORKS", "SolidCAM", "DraftSight", "SWOOD", "DriveWorks", "3DEXPERIENCE", "SolidSteel", "Geomagic", "Fikus", "PDM", "Simulation", "Composer"];
+const BEZ_PROIZVODA = "(bez proizvoda)";
+
+const licKom = (k) => { const n = Number(k.broj_licenci); return n > 0 ? n : 1; };
+const licDana = (k) => (k.end_date ? daysDiff(k.end_date) : null);
+function rokOk(k, rok) {
+  if (rok === "Sve") return true;
+  const n = licDana(k);
+  if (n == null) return false;
+  if (rok === "Ističe u 30 dana") return n >= 0 && n <= 30;
+  if (rok === "Obnova za 31–90 dana") return n > 30 && n <= 90;
+  if (rok === "Isteklo") return n < 0;
+  return n > 30; // Aktivno
+}
+function proizvodPorodica(naziv) {
+  const t = String(naziv || "").trim().split(/\s+/)[0];
+  if (!t) return BEZ_PROIZVODA;
+  return POZNATI_PROIZVODI.find((p) => p.toUpperCase() === t.toUpperCase()) || t;
+}
+const kratkiProizvod = (s) => String(s || "")
+  .replace(/^SOLIDWORKS\s+/i, "SW ").replace(/^DraftSight\s+/i, "DS ").replace(/^3DEXPERIENCE\s+Works\s+/i, "3DX ").trim();
+function dokle(dateStr) {
+  if (!dateStr) return "—";
+  const n = daysDiff(dateStr);
+  if (n === 0) return "danas";
+  const a = Math.abs(n);
+  const t = a <= 45 ? `${a} ${a === 1 ? "dan" : "dana"}` : `${Math.round(a / 30.4)} mj.`;
+  return n > 0 ? `za ${t}` : `prije ${t}`;
+}
+function dokleCls(dateStr) {
+  if (!dateStr) return "text-slate-400 dark:text-slate-500";
+  const n = daysDiff(dateStr);
+  if (n < 0) return "text-red-700 dark:text-red-400";
+  if (n <= 30) return "text-amber-700 dark:text-amber-400";
+  if (n <= 90) return "text-blue-700 dark:text-blue-400";
+  return "text-slate-700 dark:text-slate-300";
+}
+const kratakDatum = (d) => (d ? `${Number(d.slice(8, 10))}.${Number(d.slice(5, 7))}.${d.slice(0, 4)}.` : "—");
+
+const LIC_PILL = {
+  Aktivno: ["bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300", "bg-green-500"],
+  "Ističe uskoro": ["bg-amber-50 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", "bg-amber-500"],
+  Isteklo: ["bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300", "bg-red-500"],
+  Nepoznato: ["bg-slate-100 text-slate-600 dark:bg-slate-700/50 dark:text-slate-300", "bg-slate-400"],
+};
+function LicPill({ status }) {
+  const [cls, dot] = LIC_PILL[status] || LIC_PILL.Nepoznato;
   return (
-    <th
-      className={"px-4 py-2.5 cursor-pointer select-none hover:text-slate-800 dark:text-slate-200 " + (align === "center" ? "text-center" : "")}
-      onClick={() => onSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active ? (sortDir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300 dark:text-slate-600" />}
-      </span>
-    </th>
+    <span className={"inline-flex items-center gap-1.5 text-xs font-semibold pl-2 pr-2.5 py-0.5 rounded-full whitespace-nowrap " + cls}>
+      <span className={"w-2 h-2 rounded-full " + dot} /> {status}
+    </span>
   );
 }
-
-function Pagination({ page, setPage, pageSize, setPageSize, total }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const clampedPage = Math.min(page, totalPages);
-  const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
-  const to = Math.min(clampedPage * pageSize, total);
+function ProizvodChip({ children }) {
+  return <span className="text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-px rounded-md whitespace-nowrap">{children}</span>;
+}
+function PeriodBar({ start, end }) {
+  if (!start || !end) return <span className="text-xs text-slate-400">{kratakDatum(start)} – {kratakDatum(end)}</span>;
+  const s = new Date(start + "T00:00:00"), e = new Date(end + "T00:00:00");
+  const tot = Math.max(1, (e - s) / DAY_MS);
+  const done = Math.min(tot, Math.max(0, (Date.now() - s) / DAY_MS));
+  const n = daysDiff(end);
+  const col = n < 0 ? "bg-red-500" : n <= 30 ? "bg-amber-500" : "bg-teal-500";
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50">
-      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-        <span>Prikaz po strani:</span>
-        <select
-          className="text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          value={pageSize}
-          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-        >
-          {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
+    <div className="min-w-[140px]" title={`${fmtDate(start)} – ${fmtDate(end)}`}>
+      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div className={"h-full rounded-full " + col} style={{ width: `${Math.round((done / tot) * 100)}%` }} />
       </div>
-      <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-        <span>{total === 0 ? "0 rezultata" : `${from}–${to} od ${total}`}</span>
-        <div className="flex items-center gap-1">
-          <button className={btnGhostIcon} disabled={clampedPage <= 1} onClick={() => setPage(clampedPage - 1)}>
-            <ChevronLeft size={16} />
-          </button>
-          <span className="px-2">Strana {clampedPage} / {totalPages}</span>
-          <button className={btnGhostIcon} disabled={clampedPage >= totalPages} onClick={() => setPage(clampedPage + 1)}>
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+      <div className="flex justify-between text-[11px] text-slate-400 dark:text-slate-500 mt-1"><span>{kratakDatum(start)}</span><span>{kratakDatum(end)}</span></div>
     </div>
   );
 }
 
-export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany, presetLicenca, onPresetConsumed }) {
+// grupiše licence po firmi (isti ključ kao i drugdje u CRM-u: "ACO Sarajevo" = "ACO SARAJEVO d.o.o.")
+function grupisiPoFirmi(licence, prodavaciIdx) {
+  const m = new Map();
+  for (const k of licence) {
+    const key = companyKey(k.naziv_firme) || String(k.naziv_firme || "").trim().toLowerCase();
+    let f = m.get(key);
+    if (!f) {
+      f = { key, naziv: k.naziv_firme || "—", grad: "", drzava: "", adresa: "", postanski_broj: "", lic: [] };
+      m.set(key, f);
+    }
+    f.lic.push(k);
+    for (const p of ["grad", "drzava", "adresa", "postanski_broj"]) if (!f[p] && k[p]) f[p] = k[p];
+  }
+  return [...m.values()].map((f) => {
+    const ends = f.lic.map((k) => k.end_date).filter(Boolean);
+    const buduci = ends.filter((d) => daysDiff(d) >= 0).sort();
+    const sljedeca = buduci[0] || ends.sort().slice(-1)[0] || null;
+    return {
+      ...f,
+      sljedeca,
+      status: sljedeca ? licenseStatus(sljedeca).label : "Nepoznato",
+      kom: f.lic.reduce((s, k) => s + licKom(k), 0),
+      isteklih: f.lic.filter((k) => k.end_date && daysDiff(k.end_date) < 0).length,
+      prodavaci: prodavaciIdx.get(f.key) || [],
+    };
+  });
+}
+// sortiranje po sljedećoj obnovi: prvo one koje dolaze (najbliže prve), pa istekle (najsvježije prve), pa bez datuma
+function obnovaRang(f) {
+  if (!f.sljedeca) return [2, 0];
+  const n = daysDiff(f.sljedeca);
+  return n >= 0 ? [0, n] : [1, -n];
+}
+
+export function KupciTab({ data, potencijali = [], currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany, presetLicenca, onPresetConsumed }) {
   const [q, setQ] = useState("");
-  const [fLicenca, setFLicenca] = useState("Sve");
+  const [rok, setRok] = useState("Sve");
+  const [fProizvod, setFProizvod] = useState("Svi");
+  const [fDrzava, setFDrzava] = useState("Sve");
+  const [fProdavac, setFProdavac] = useState("Svi");
+  const [prikaz, setPrikaz] = useState("firme");
+  const [sortF, setSortF] = useState({ field: "sljedeca", dir: "asc" });
+  const [sortL, setSortL] = useState({ field: "end_date", dir: "asc" });
+  const [otvorene, setOtvorene] = useState(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [editing, setEditing] = useState(null);
+  const [prefill, setPrefill] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
-  const [sortField, setSortField] = useState("naziv_firme");
-  const [sortDir, setSortDir] = useState("asc");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     if (presetLicenca) {
-      setFLicenca(presetLicenca);
+      setRok(K_PRESET[presetLicenca] || "Sve");
       setPage(1);
       onPresetConsumed && onPresetConsumed();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetLicenca]);
+  useEffect(() => { setPage(1); }, [q, rok, fProizvod, fDrzava, fProdavac, prikaz]);
 
-  const handleSort = (field) => {
-    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortField(field); setSortDir("asc"); }
-    setPage(1);
+  // prodavač firme iz Baze potencijala
+  const prodavaciIdx = useMemo(() => {
+    const m = new Map();
+    for (const p of potencijali) {
+      const key = companyKey(p.naziv_firme);
+      if (!key) continue;
+      const imena = prodavaciPotencijala(p);
+      if (imena.length && !m.has(key)) m.set(key, imena);
+    }
+    return m;
+  }, [potencijali]);
+  const prodavacLicence = (k) => (prodavaciIdx.get(companyKey(k.naziv_firme)) || [])[0] || "Nedodijeljeno";
+
+  const drzave = useMemo(() => [...new Set(data.map((k) => k.drzava).filter(Boolean))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
+  const porodice = useMemo(() => [...new Set(data.map((k) => proizvodPorodica(k.naziv_proizvoda)))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
+
+  const query = q.trim().toLowerCase();
+  // svi filteri osim roka (za pločice, kalendar i desnu kolonu)
+  const base = useMemo(() => data.filter((k) => {
+    if (query) {
+      const polja = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa];
+      if (!polja.some((x) => (x || "").toString().toLowerCase().includes(query))) return false;
+    }
+    if (fProizvod !== "Svi" && proizvodPorodica(k.naziv_proizvoda) !== fProizvod) return false;
+    if (fDrzava !== "Sve" && k.drzava !== fDrzava) return false;
+    if (fProdavac !== "Svi" && prodavacLicence(k) !== fProdavac) return false;
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [data, query, fProizvod, fDrzava, fProdavac, prodavaciIdx]);
+  const filtered = useMemo(() => base.filter((k) => rokOk(k, rok)), [base, rok]);
+
+  const relevance = (naziv) => {
+    if (!query) return 0;
+    const n = (naziv || "").toLowerCase();
+    return n.startsWith(query) ? 0 : n.includes(query) ? 1 : 2;
   };
 
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    return data.filter((k) => {
-      if (query) {
-        const fields = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa];
-        const matches = fields.some((f) => (f || "").toString().toLowerCase().includes(query));
-        if (!matches) return false;
-      }
-      if (fLicenca !== "Sve" && licenseStatus(k.end_date).label !== fLicenca) return false;
-      return true;
-    });
-  }, [data, q, fLicenca]);
-
-  const sorted = useMemo(() => {
-    const arr = [...filtered];
-    const dir = sortDir === "asc" ? 1 : -1;
-    const query = q.trim().toLowerCase();
-
-    const relevance = (k) => {
-      if (!query) return 0;
-      const naziv = (k.naziv_firme || "").toLowerCase();
-      if (naziv.startsWith(query)) return 0; // naziv firme počinje sa pretragom - najrelevantnije
-      if (naziv.includes(query)) return 1; // naziv firme sadrži pretragu
-      return 2; // pretraga je pogodila neko drugo polje (proizvod, serijski broj, adresa...)
-    };
-
+  // ---------- po firmi ----------
+  const firme = useMemo(() => {
+    const arr = grupisiPoFirmi(filtered, prodavaciIdx);
+    const dir = sortF.dir === "asc" ? 1 : -1;
     arr.sort((a, b) => {
-      if (query) {
-        const ra = relevance(a);
-        const rb = relevance(b);
-        if (ra !== rb) return ra - rb;
-      }
-      let va = a[sortField], vb = b[sortField];
-      if (sortField === "broj_licenci") { va = Number(va) || 0; vb = Number(vb) || 0; return (va - vb) * dir; }
-      va = (va || "").toString().toLowerCase();
-      vb = (vb || "").toString().toLowerCase();
-      if (va < vb) return -1 * dir;
-      if (va > vb) return 1 * dir;
-      return 0;
+      const r = relevance(a.naziv) - relevance(b.naziv);
+      if (r) return r;
+      if (sortF.field === "naziv") return a.naziv.localeCompare(b.naziv, "hr") * dir;
+      if (sortF.field === "kom") return (a.kom - b.kom) * dir;
+      const ra = obnovaRang(a), rb = obnovaRang(b);
+      return (ra[0] - rb[0] || ra[1] - rb[1]) * dir;
     });
     return arr;
-  }, [filtered, sortField, sortDir, q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, prodavaciIdx, sortF, query]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageData = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // ---------- po licenci ----------
+  const licence = useMemo(() => {
+    const arr = [...filtered];
+    const dir = sortL.dir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      const r = relevance(a.naziv_firme) - relevance(b.naziv_firme);
+      if (r) return r;
+      if (sortL.field === "broj_licenci") return ((Number(a.broj_licenci) || 0) - (Number(b.broj_licenci) || 0)) * dir;
+      const va = (a[sortL.field] || "").toString().toLowerCase(), vb = (b[sortL.field] || "").toString().toLowerCase();
+      if (!va && vb) return 1;
+      if (va && !vb) return -1;
+      return va.localeCompare(vb, "hr") * dir;
+    });
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortL, query]);
+
+  const ukupno = prikaz === "firme" ? firme.length : licence.length;
+  const totalPages = Math.max(1, Math.ceil(ukupno / pageSize));
+  const cp = Math.min(page, totalPages);
+  const firmePage = firme.slice((cp - 1) * pageSize, cp * pageSize);
+  const licencePage = licence.slice((cp - 1) * pageSize, cp * pageSize);
+
+  // ---------- brojke (pločice, desna kolona) ----------
+  const stat = (r) => {
+    const ls = base.filter((k) => rokOk(k, r));
+    return { firme: new Set(ls.map((k) => companyKey(k.naziv_firme))).size, kom: ls.reduce((s, k) => s + licKom(k), 0) };
+  };
+  const sSve = stat("Sve"), s30 = stat("Ističe u 30 dana"), s90 = stat("Obnova za 31–90 dana"), sIst = stat("Isteklo");
+  const firmeBase = useMemo(() => grupisiPoFirmi(base, prodavaciIdx), [base, prodavaciIdx]);
+  const zaObnovu = firmeBase
+    .filter((f) => f.sljedeca && daysDiff(f.sljedeca) >= 0 && daysDiff(f.sljedeca) <= 30)
+    .sort((a, b) => a.sljedeca.localeCompare(b.sljedeca));
+
+  const kalendar = useMemo(() => {
+    const now = new Date();
+    const mjeseci = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      mjeseci.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MJESECI[d.getMonth()].slice(0, 3).toLowerCase(), god: d.getFullYear(), n: 0 });
+    }
+    for (const k of base) {
+      if (!k.end_date || daysDiff(k.end_date) < 0) continue;
+      const m = mjeseci.find((x) => x.key === k.end_date.slice(0, 7));
+      if (m) m.n += licKom(k);
+    }
+    return mjeseci;
+  }, [base]);
+  const maxKal = Math.max(1, ...kalendar.map((m) => m.n));
+
+  const poProizvodu = useMemo(() => {
+    const m = new Map();
+    base.forEach((k) => { const p = proizvodPorodica(k.naziv_proizvoda); m.set(p, (m.get(p) || 0) + licKom(k)); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [base]);
+  const maxProiz = poProizvodu.length ? poProizvodu[0][1] : 1;
+
+  const nFirmiUk = useMemo(() => new Set(data.map((k) => companyKey(k.naziv_firme))).size, [data]);
+  const nLicUk = useMemo(() => data.reduce((s, k) => s + licKom(k), 0), [data]);
+  const zadnjiUvoz = useMemo(() => data.map((k) => String(k.created_at || "").slice(0, 10)).filter(Boolean).sort().slice(-1)[0], [data]);
+
+  const toggleFirma = (key) => setOtvorene((prev) => {
+    const n = new Set(prev);
+    if (n.has(key)) n.delete(key); else n.add(key);
+    return n;
+  });
+  const otvoriFirmu = (f) => {
+    setPrikaz("firme");
+    setOtvorene((prev) => new Set(prev).add(f.key));
+  };
+  const toggleRok = (r) => setRok(rok === r ? "Sve" : r);
 
   const handleSave = async (payload) => {
     if (editing) await onUpdate(editing.id, payload);
     else await onAdd(payload);
+  };
+  const novaLicenca = (f) => {
+    setEditing(null);
+    setPrefill({ naziv_firme: f.naziv, grad: f.grad, drzava: f.drzava, adresa: f.adresa, postanski_broj: f.postanski_broj });
+    setShowNew(true);
   };
 
   const exportCSV = () => {
     const headers = [
       "Naziv firme", "Grad", "Država", "Adresa", "Poštanski broj", "Serijski broj", "Broj licenci",
       "Naziv proizvoda", "Naziv proizvoda 2", "Revenue Type", "Status (izvorni)", "Start datum", "End datum",
-      "Napomena", "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
+      "Status licence", "Prodavač", "Napomena", "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
     ];
-    const rows = sorted.map((k) => [
+    const rows = licence.map((k) => [
       k.naziv_firme, k.grad, k.drzava, k.adresa, k.postanski_broj, k.serijski_broj, k.broj_licenci,
       k.naziv_proizvoda, k.naziv_proizvoda_2, k.revenue_type, k.izvorni_status, k.start_date, k.end_date,
-      k.napomena, k.created_by, k.created_at, k.updated_by, k.updated_at,
+      licenseStatus(k.end_date).label, prodavacLicence(k), k.napomena, k.created_by, k.created_at, k.updated_by, k.updated_at,
     ]);
     downloadCSV(`kupci_${todayStr()}.csv`, headers, rows);
   };
 
+  const lokacija = (grad, drzava) => {
+    const kod = DRZAVA_KOD[drzava];
+    return (
+      <span className="inline-flex items-center gap-1.5 min-w-0">
+        {kod && <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 leading-4">{kod}</span>}
+        <span className="truncate">{[grad, kod ? "" : drzava].filter(Boolean).join(" · ") || (kod ? "" : "—")}</span>
+      </span>
+    );
+  };
+  const proizvodiChips = (f) => {
+    const ps = f.lic.map((k) => kratkiProizvod(k.naziv_proizvoda) + (licKom(k) > 1 ? ` ×${licKom(k)}` : "")).filter((x) => x.trim());
+    const uniq = [...new Set(ps)];
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {uniq.slice(0, 2).map((p) => <ProizvodChip key={p}>{p}</ProizvodChip>)}
+        {uniq.length > 2 && <ProizvodChip>+{uniq.length - 2}</ProizvodChip>}
+        {uniq.length === 0 && <span className="text-xs text-slate-400">—</span>}
+      </div>
+    );
+  };
+  const licenceDetalji = (f) => (
+    <div className="bg-white dark:bg-slate-900 border border-teal-100 dark:border-teal-900/60 rounded-xl px-3.5 pb-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Licence · {f.lic.length} {plural(f.lic.length, "serijski broj", "serijska broja", "serijskih brojeva")}
+        </span>
+        <span className="flex gap-2">
+          {onViewCompany && (
+            <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} onClick={() => onViewCompany(f.naziv)}><ExternalLink size={13} /> 360° firme</button>
+          )}
+          <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} disabled={!currentUser} onClick={() => novaLicenca(f)}><Plus size={13} /> Licenca</button>
+        </span>
+      </div>
+      {f.lic.map((k) => (
+        <div key={k.id} className="grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px_auto] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
+          <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
+          <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
+            {k.naziv_proizvoda || "—"}
+            {k.naziv_proizvoda_2 && <span className="text-slate-400 dark:text-slate-500 font-normal"> · {k.naziv_proizvoda_2}</span>}
+            {k.napomena && <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal truncate" title={k.napomena}>{k.napomena}</span>}
+          </span>
+          <span className="text-[13px] text-slate-700 dark:text-slate-300">{k.broj_licenci ?? "—"} kom.</span>
+          <PeriodBar start={k.start_date} end={k.end_date} />
+          <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
+          <span className="flex items-center justify-end gap-1">
+            <button type="button" className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi licencu" aria-label="Uredi licencu"><Pencil size={14} /></button>
+            {canDelete && <ConfirmDelete label={`${k.naziv_firme} — ${k.naziv_proizvoda || "licenca"}`} onConfirm={() => onDelete(k.id)} />}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const prikazBtn = (id, Icon, label) => (
+    <button type="button" onClick={() => setPrikaz(id)}
+      className={"h-8 px-3 inline-flex items-center gap-1.5 text-[13px] " +
+        (prikaz === id ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200")}>
+      <Icon size={14} /> {label}
+    </button>
+  );
+
   return (
     <div>
-      <Toolbar>
-        <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Pretraži po firmi, gradu, proizvodu, serijskom broju..." />
-        <select className={inputCls + " w-auto"} value={fLicenca} onChange={(e) => { setFLicenca(e.target.value); setPage(1); }}>
-          <option>Sve</option><option>Aktivno</option><option>Ističe uskoro</option><option>Isteklo</option>
-        </select>
-        <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi / mjesečno ažuriranje</button>
-        <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          onClick={exportCSV}
-        >
-          <Download size={15} /> Izvoz CSV
-        </button>
-        {canDelete && (
-          <button
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-            onClick={() => setShowDeleteAll(true)}
-            disabled={data.length === 0}
-          >
-            <Trash2 size={15} /> Obriši sve kupce
-          </button>
-        )}
-        <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj kupca</button>
-      </Toolbar>
+      {/* ---------- zaglavlje ---------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Kupci i licence</h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {fmtN(nFirmiUk)} {plural(nFirmiUk, "firma", "firme", "firmi")} · {fmtN(nLicUk)} {plural(nLicUk, "licenca", "licence", "licenci")}
+            {zadnjiUvoz && <> · zadnje ažuriranje {fmtDate(zadnjiUvoz)}</>}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={headerBtnSec} onClick={() => setShowImport(true)}><RefreshCw size={15} /> Mjesečno ažuriranje</button>
+          <button type="button" className={headerBtnSec} onClick={exportCSV}><Download size={15} /> Izvoz</button>
+          <button type="button" className={btnPrimary + " h-9"} onClick={() => { setEditing(null); setPrefill(null); setShowNew(true); }} disabled={!currentUser}><Plus size={15} /> Novi kupac</button>
+          {canDelete && (
+            <IconMenu label="Više opcija" items={[
+              { label: "Obriši sve kupce", icon: Trash2, danger: true, disabled: data.length === 0, onClick: () => setShowDeleteAll(true) },
+            ]} />
+          )}
+        </div>
+      </div>
 
-      {sorted.length === 0 ? (
-        <EmptyState icon={Building2} title="Nema unesenih kupaca" subtitle="Dodaj ručno ili uvezi tabelu postojećih kupaca i licenci."
-          action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvog kupca</button>} />
-      ) : (
-        <>
-        <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                  <SortableHeader label="Firma" field="naziv_firme" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <SortableHeader label="Grad / Država" field="grad" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <th className="px-4 py-2.5">Adresa</th>
-                  <SortableHeader label="Proizvod" field="naziv_proizvoda" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <th className="px-3 py-2.5 whitespace-nowrap">Serijski broj</th>
-                  <SortableHeader label="Broj licenci" field="broj_licenci" sortField={sortField} sortDir={sortDir} onSort={handleSort} align="center" />
-                  <SortableHeader label="Start" field="start_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <SortableHeader label="Ističe" field="end_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {pageData.map((k) => {
-                  const s = licenseStatus(k.end_date);
-                  return (
-                    <tr key={k.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                      <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-200">
-                        <span className="inline-flex items-center gap-1.5">
-                          {k.naziv_firme}
-                          {onViewCompany && (
-                            <button onClick={() => onViewCompany(k.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
-                              <ExternalLink size={12} />
-                            </button>
-                          )}
-                        </span>
-                        <div className="text-xs text-slate-400 dark:text-slate-500 font-normal"><MetaLine record={k} /></div>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                        {k.grad && <div>{k.grad}</div>}
-                        {k.drzava && <div className="text-xs text-slate-400 dark:text-slate-500">{k.drzava}</div>}
-                        {!k.grad && !k.drzava && "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 text-xs">{[k.adresa, k.postanski_broj].filter(Boolean).join(", ") || "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                        {k.naziv_proizvoda || "—"}
-                        {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400 dark:text-slate-500">{k.naziv_proizvoda_2}</div>}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400 font-mono text-xs whitespace-nowrap">{k.serijski_broj || "—"}</td>
-                      <td className="px-2 py-2.5 text-center text-slate-600 dark:text-slate-400 whitespace-nowrap">{k.broj_licenci ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(k.start_date)}</td>
-                      <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(k.end_date)}</td>
-                      <td className="px-4 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + s.cls}>{s.label}</span></td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1 justify-end">
-                          <button className={btnGhostIcon} onClick={() => setEditing(k)} title="Uredi"><Pencil size={14} /></button>
-                          {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
-                        </div>
-                      </td>
+      {/* ---------- pločice (ujedno brzi filteri) ---------- */}
+      <div className="flex flex-wrap gap-2.5 mb-4">
+        <KpiTile icon={Building2} label="Svi kupci" value={fmtN(sSve.firme)} active={rok === "Sve"} onClick={() => setRok("Sve")}
+          sub={`${plural(sSve.firme, "firma", "firme", "firmi")} · ${fmtN(sSve.kom)} ${plural(sSve.kom, "licenca", "licence", "licenci")}`} />
+        <KpiTile icon={Clock} tone="amber" label="Ističe u 30 dana" value={fmtN(s30.firme)} active={rok === "Ističe u 30 dana"} onClick={() => toggleRok("Ističe u 30 dana")}
+          sub={`${plural(s30.firme, "firma", "firme", "firmi")} · ${fmtN(s30.kom)} ${plural(s30.kom, "licenca", "licence", "licenci")} za obnovu`} />
+        <KpiTile icon={Calendar} tone="blue" label="Obnova za 31–90 dana" value={fmtN(s90.firme)} active={rok === "Obnova za 31–90 dana"} onClick={() => toggleRok("Obnova za 31–90 dana")}
+          sub={`${plural(s90.firme, "firma", "firme", "firmi")} · ${fmtN(s90.kom)} ${plural(s90.kom, "licenca", "licence", "licenci")} · planirati kontakt`} />
+        <KpiTile icon={AlertTriangle} tone="red" label="Isteklo — neobnovljeno" value={fmtN(sIst.firme)} active={rok === "Isteklo"} onClick={() => toggleRok("Isteklo")}
+          sub={`${plural(sIst.firme, "firma", "firme", "firmi")} · ${fmtN(sIst.kom)} ${plural(sIst.kom, "licenca", "licence", "licenci")}`} />
+      </div>
+
+      <div className="xl:flex xl:items-start xl:gap-4">
+        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+          {/* filteri */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="w-full sm:w-64 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, proizvod, serijski broj..." /></div>
+            <FilterPill label="Rok" value={rok} defaultValue="Sve" onChange={setRok} options={K_ROKOVI} />
+            <FilterPill label="Proizvod" value={fProizvod} defaultValue="Svi" onChange={setFProizvod} options={["Svi", ...porodice]} />
+            <FilterPill label="Država" value={fDrzava} defaultValue="Sve" onChange={setFDrzava} options={["Sve", ...drzave]} />
+            <FilterPill label="Prodavač" value={fProdavac} defaultValue="Svi" onChange={setFProdavac} options={["Svi", ...PRODAVACI_IMENA, "Nedodijeljeno"]} />
+            <div className="ml-auto flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
+              {prikazBtn("firme", Building2, "Po firmi")}
+              <span className="w-px bg-slate-200 dark:bg-slate-700" />
+              {prikazBtn("licence", KeyRound, "Po licenci")}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="p-4">
+              <EmptyState icon={Building2} title={data.length === 0 ? "Nema unesenih kupaca" : "Nema kupaca za odabrane filtere"}
+                subtitle={data.length === 0 ? "Dodaj ručno ili uvezi tabelu postojećih kupaca i licenci." : "Promijeni pretragu ili filtere."}
+                action={data.length === 0 ? <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvog kupca</button> : null} />
+            </div>
+          ) : prikaz === "firme" ? (
+            <>
+              {/* ---------- desktop: tabela po firmi ---------- */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60">
+                      <th className="w-9" />
+                      <SortHead label="Firma" field="naziv" sort={sortF} setSort={setSortF} />
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Proizvodi</th>
+                      <SortHead label="Licenci" field="kom" sort={sortF} setSort={setSortF} descFirst className="text-center" />
+                      <SortHead label="Sljedeća obnova" field="sljedeca" sort={sortF} setSort={setSortF} />
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</th>
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Prodavač</th>
+                      <th className="w-10" />
                     </tr>
+                  </thead>
+                  <tbody>
+                    {firmePage.map((f) => {
+                      const open = otvorene.has(f.key);
+                      return [
+                        <tr key={f.key} onClick={() => toggleFirma(f.key)}
+                          className={"group border-t border-slate-100 dark:border-slate-800 cursor-pointer transition-colors " + (open ? "bg-teal-50/60 dark:bg-teal-900/20" : "hover:bg-slate-50/70 dark:hover:bg-slate-800/40")}>
+                          <td className={"pl-2.5 relative " + (open ? "shadow-[inset_3px_0_0_0_#0d9488]" : "")}>
+                            <span className={"inline-flex w-7 h-7 items-center justify-center " + (open ? "text-teal-700 dark:text-teal-400" : "text-slate-400")}>
+                              {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-2.5 max-w-[280px]">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lokacija(f.grad, f.drzava)}</div>
+                          </td>
+                          <td className="px-3.5 py-2.5">{proizvodiChips(f)}</td>
+                          <td className="px-3.5 py-2.5 text-center font-semibold text-slate-900 dark:text-slate-100">{f.kom}</td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <div className={"text-[13px] font-semibold " + dokleCls(f.sljedeca)}>{dokle(f.sljedeca)}</div>
+                            <div className="text-[11.5px] text-slate-400 dark:text-slate-500">{kratakDatum(f.sljedeca)}</div>
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <LicPill status={f.status} />
+                            {f.isteklih > 0 && f.status !== "Isteklo" && (
+                              <div className="text-[11px] text-red-600 dark:text-red-400 mt-1">{f.isteklih} {plural(f.isteklih, "istekla", "istekle", "isteklih")}</div>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            {f.prodavaci.length ? <Avatar name={f.prodavaci[0]} /> : <span className="text-xs text-slate-400">—</span>}
+                          </td>
+                          <td className="pr-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            {onViewCompany && (
+                              <button type="button" className={btnGhostIcon + " opacity-40 group-hover:opacity-100"} onClick={() => onViewCompany(f.naziv)} title="360° pregled firme" aria-label="360° pregled firme">
+                                <ExternalLink size={14} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>,
+                        open && (
+                          <tr key={f.key + "-d"} className="bg-teal-50/60 dark:bg-teal-900/20">
+                            <td className="shadow-[inset_3px_0_0_0_#0d9488]" />
+                            <td colSpan={7} className="pr-4 pb-3 pt-0.5">{licenceDetalji(f)}</td>
+                          </tr>
+                        ),
+                      ];
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* ---------- mobitel: kartice po firmi ---------- */}
+              <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {firmePage.map((f) => {
+                  const open = otvorene.has(f.key);
+                  return (
+                    <div key={f.key} className={open ? "bg-teal-50/60 dark:bg-teal-900/20" : ""}>
+                      <button type="button" onClick={() => toggleFirma(f.key)} className="w-full text-left px-4 py-3 flex items-start gap-2">
+                        <span className="mt-0.5 text-slate-400">{open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</span>
+                            <LicPill status={f.status} />
+                          </span>
+                          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            {f.lic.map((k) => kratkiProizvod(k.naziv_proizvoda)).filter(Boolean).join(", ") || "—"} · {f.kom} kom.
+                          </span>
+                          <span className={"block text-xs font-semibold mt-0.5 " + dokleCls(f.sljedeca)}>Obnova {dokle(f.sljedeca)} · {kratakDatum(f.sljedeca)}</span>
+                        </span>
+                      </button>
+                      {open && <div className="px-3 pb-3">{licenceDetalji(f)}</div>}
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={currentPage} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={sorted.length} />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* ---------- po licenci ---------- */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60">
+                      <SortHead label="Firma" field="naziv_firme" sort={sortL} setSort={setSortL} />
+                      <SortHead label="Lokacija" field="grad" sort={sortL} setSort={setSortL} />
+                      <SortHead label="Proizvod" field="naziv_proizvoda" sort={sortL} setSort={setSortL} />
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Serijski broj</th>
+                      <SortHead label="Kom." field="broj_licenci" sort={sortL} setSort={setSortL} descFirst className="text-center" />
+                      <SortHead label="Pretplata" field="end_date" sort={sortL} setSort={setSortL} />
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</th>
+                      <th className="px-3.5 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {licencePage.map((k) => (
+                      <tr key={k.id} className="group border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="px-3.5 py-2.5 max-w-[240px]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">{k.naziv_firme}</span>
+                            {onViewCompany && (
+                              <button type="button" onClick={() => onViewCompany(k.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400 opacity-0 group-hover:opacity-100 shrink-0" title="360° pregled firme" aria-label="360° pregled firme">
+                                <ExternalLink size={12} />
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{prodavacLicence(k)}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-xs text-slate-600 dark:text-slate-400">{lokacija(k.grad, k.drzava)}</td>
+                        <td className="px-3.5 py-2.5 text-slate-700 dark:text-slate-300">
+                          {k.naziv_proizvoda || "—"}
+                          {k.naziv_proizvoda_2 && <div className="text-xs text-slate-400 dark:text-slate-500">{k.naziv_proizvoda_2}</div>}
+                        </td>
+                        <td className="px-3.5 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{k.serijski_broj || "—"}</td>
+                        <td className="px-3.5 py-2.5 text-center text-slate-700 dark:text-slate-300">{k.broj_licenci ?? "—"}</td>
+                        <td className="px-3.5 py-2.5"><PeriodBar start={k.start_date} end={k.end_date} /></td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <LicPill status={licenseStatus(k.end_date).label} />
+                          <div className={"text-[11px] mt-1 " + dokleCls(k.end_date)}>{dokle(k.end_date)}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi" aria-label="Uredi"><Pencil size={14} /></button>
+                            {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {licencePage.map((k) => (
+                  <div key={k.id} className="px-4 py-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{k.naziv_firme}</span>
+                        <LicPill status={licenseStatus(k.end_date).label} />
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{k.naziv_proizvoda || "—"} · {k.broj_licenci ?? "—"} kom.</p>
+                      <p className={"text-xs mt-0.5 " + dokleCls(k.end_date)}>{fmtDate(k.start_date)} – {fmtDate(k.end_date)} · {dokle(k.end_date)}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi" aria-label="Uredi"><Pencil size={14} /></button>
+                      {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {filtered.length > 0 && <PageNav page={cp} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={ukupno} />}
         </div>
 
-        {/* Mobilne kartice */}
-        <div className="sm:hidden space-y-2.5">
-          {pageData.map((k) => {
-            const s = licenseStatus(k.end_date);
-            return (
-              <div key={k.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">{k.naziv_firme}</h4>
-                      {onViewCompany && (
-                        <button onClick={() => onViewCompany(k.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
-                          <ExternalLink size={12} />
-                        </button>
-                      )}
-                      <span className={"text-xs px-2 py-0.5 rounded-full " + s.cls}>{s.label}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{k.naziv_proizvoda || "—"} · {[k.grad, k.drzava].filter(Boolean).join(", ")}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(k.start_date)} – {fmtDate(k.end_date)}</p>
+        {/* ---------- desna kolona ---------- */}
+        <div className="hidden xl:flex flex-col gap-4 w-[330px] shrink-0">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={<span className="text-[11px] text-slate-400">broj licenci</span>}>Obnove — narednih 12 mj.</PanelLabel>
+            <div className="flex items-end gap-0.5 mt-2" role="img" aria-label="Broj licenci koje ističu po mjesecima, narednih 12 mjeseci">
+              {kalendar.map((m, i) => (
+                <div key={m.key} className="flex-1 flex flex-col items-center gap-1" title={`${MJESECI[Number(m.key.slice(5, 7)) - 1]} ${m.god}: ${m.n} ${plural(m.n, "licenca", "licence", "licenci")}`}>
+                  <span className="text-[10.5px] font-semibold text-slate-700 dark:text-slate-300 h-3.5">{m.n || ""}</span>
+                  <div className="h-24 w-full flex items-end justify-center">
+                    <div className={"w-3 rounded-t " + (i === 0 ? "bg-amber-500" : "bg-teal-500")} style={{ height: m.n ? `${Math.max(4, Math.round((m.n / maxKal) * 96))}px` : 0 }} />
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button className={btnGhostIcon} onClick={() => setEditing(k)} title="Uredi"><Pencil size={14} /></button>
-                    {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
-                  </div>
+                  <span className={"text-[10.5px] " + (i === 0 ? "font-bold text-amber-700 dark:text-amber-400" : "text-slate-500 dark:text-slate-400")}>{m.label}</span>
                 </div>
-              </div>
-            );
-          })}
-          <Pagination page={currentPage} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={sorted.length} />
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[11.5px] text-slate-600 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />Ovaj mjesec</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500" />Kasnije</span>
+              {sIst.kom > 0 && (
+                <button type="button" onClick={() => toggleRok("Isteklo")} className="ml-auto inline-flex items-center gap-1 font-semibold text-red-700 dark:text-red-400 hover:underline">
+                  <AlertTriangle size={12} /> {fmtN(sIst.kom)} isteklih
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={<span className="text-[11px] font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-px rounded-full">{zaObnovu.length} {plural(zaObnovu.length, "firma", "firme", "firmi")}</span>}>Za obnovu u 30 dana</PanelLabel>
+            {zaObnovu.length === 0 && <p className="text-xs text-slate-400 py-2">Nema obnova u narednih 30 dana.</p>}
+            {zaObnovu.slice(0, 6).map((f) => {
+              const due = f.lic.filter((k) => k.end_date === f.sljedeca);
+              return (
+                <button key={f.key} type="button" onClick={() => { setRok("Ističe u 30 dana"); otvoriFirmu(f); }}
+                  className="w-full text-left flex items-center gap-2.5 py-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg -mx-1.5 px-1.5">
+                  {f.prodavaci.length ? <Avatar name={f.prodavaci[0]} /> : <span className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 shrink-0" />}
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{due.map((k) => kratkiProizvod(k.naziv_proizvoda) + (licKom(k) > 1 ? ` ×${licKom(k)}` : "")).join(", ")}</span>
+                  </span>
+                  <span className="text-right shrink-0">
+                    <span className="block text-[12.5px] font-semibold text-amber-700 dark:text-amber-400">{dokle(f.sljedeca)}</span>
+                    <span className="block text-[11px] text-slate-400">{kratakDatum(f.sljedeca)}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {zaObnovu.length > 6 && (
+              <button type="button" onClick={() => setRok("Ističe u 30 dana")} className="w-full text-center text-xs text-teal-700 dark:text-teal-400 hover:underline pt-2">
+                Prikaži sve ({zaObnovu.length})
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={fProizvod !== "Svi" ? <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFProizvod("Svi")}>Svi</button> : <span className="text-[11px] text-slate-400">kom.</span>}>Licence po proizvodu</PanelLabel>
+            <div className="flex flex-col gap-1 mt-1">
+              {poProizvodu.map(([p, n]) => (
+                <button key={p} type="button" onClick={() => setFProizvod(fProizvod === p ? "Svi" : p)}
+                  className={"grid grid-cols-[100px_minmax(0,1fr)_32px] gap-2.5 items-center text-left text-[12.5px] rounded-lg -mx-1.5 px-1.5 py-1 " + (fProizvod === p ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                  <span className="truncate text-slate-700 dark:text-slate-300">{p}</span>
+                  <span className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <span className="block h-full rounded-r bg-teal-500" style={{ width: `${Math.max(3, Math.round((n / maxProiz) * 100))}%` }} />
+                  </span>
+                  <b className="text-right font-semibold text-slate-900 dark:text-slate-100">{fmtN(n)}</b>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        </>
-      )}
+      </div>
 
       {(showNew || editing) && (
-        <KupacForm initial={editing} currentUser={currentUser} onSave={handleSave}
-          onClose={() => { setShowNew(false); setEditing(null); }} />
+        <KupacForm initial={editing} prefill={prefill} currentUser={currentUser} onSave={handleSave}
+          onClose={() => { setShowNew(false); setEditing(null); setPrefill(null); }} />
       )}
 
       {showImport && (
@@ -1464,24 +1915,98 @@ export function KupciTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkI
 /*  TEHNIČKA PODRŠKA                                                        */
 /* ====================================================================== */
 
+const PODRSKA_VRSTE = ["Licenciranje", "Problem", "Instalacija", "Obuka", "Konsultacija", "Ostalo"];
+const BEZ_VRSTE = "(bez vrste)";
+const VRSTA_STIL = {
+  Licenciranje: { cls: "bg-amber-50 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", bar: "bg-amber-500", icon: KeyRound },
+  Problem: { cls: "bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300", bar: "bg-rose-500", icon: Bug },
+  Instalacija: { cls: "bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300", bar: "bg-blue-500", icon: Download },
+  Obuka: { cls: "bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300", bar: "bg-violet-500", icon: GraduationCap },
+  Konsultacija: { cls: "bg-slate-200/70 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200", bar: "bg-slate-500", icon: MessageSquare },
+  Ostalo: { cls: "bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300", bar: "bg-teal-500", icon: Wrench },
+  [BEZ_VRSTE]: { cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400", bar: "bg-slate-300 dark:bg-slate-600", icon: Wrench },
+};
+const vrstaOf = (s) => (PODRSKA_VRSTE.includes(s.vrsta) ? s.vrsta : BEZ_VRSTE);
+const PODRSKA_PROIZVODI = ["SOLIDWORKS", "SolidCAM", "DraftSight", "SWOOD", "DriveWorks", "3DEXPERIENCE", "SolidSteel", "PDM", "Simulation", "Composer", "Geomagic"];
+const P_PERIODI = ["Bilo kada", "Ovaj mjesec", "Prošli mjesec", "Zadnjih 30 dana", "Zadnjih 90 dana", "Ova godina"];
+const P_LICENCA = ["Sve", "Istekla", "Ističe uskoro", "Aktivna", "Nije kupac"];
+const MJESECI_LOK = ["januaru", "februaru", "martu", "aprilu", "maju", "junu", "julu", "augustu", "septembru", "oktobru", "novembru", "decembru"];
+const DANI = ["nedjelja", "ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota"];
+const mjKey = (offset = 0) => {
+  const d = new Date();
+  const x = new Date(d.getFullYear(), d.getMonth() + offset, 1);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+};
+function podrskaPeriodOk(datum, period) {
+  if (period === "Bilo kada") return true;
+  const d = String(datum || "").slice(0, 10);
+  if (!d) return false;
+  if (period === "Ovaj mjesec") return d.slice(0, 7) === mjKey(0);
+  if (period === "Prošli mjesec") return d.slice(0, 7) === mjKey(-1);
+  if (period === "Ova godina") return d.slice(0, 4) === String(new Date().getFullYear());
+  const n = daysAgo(d);
+  if (n == null) return false;
+  return period === "Zadnjih 30 dana" ? n <= 30 : n <= 90;
+}
+function danNaslov(d) {
+  if (!d) return "Bez datuma";
+  const dt = new Date(d + "T00:00:00");
+  const n = daysAgo(d);
+  const dan = DANI[dt.getDay()];
+  const dat = `${dt.getDate()}.${dt.getMonth() + 1}.${dt.getFullYear() !== new Date().getFullYear() ? dt.getFullYear() + "." : ""}`;
+  if (n === 0) return `Danas · ${dan} ${dat}`;
+  if (n === 1) return `Jučer · ${dan} ${dat}`;
+  return `${dan.charAt(0).toUpperCase() + dan.slice(1)} ${dat}`;
+}
+function VrstaChip({ vrsta }) {
+  if (!PODRSKA_VRSTE.includes(vrsta)) return null;
+  const st = VRSTA_STIL[vrsta];
+  return (
+    <span className={"inline-flex items-center gap-1 text-xs font-semibold pl-1.5 pr-2 py-0.5 rounded-full whitespace-nowrap " + st.cls}>
+      <st.icon size={12} /> {vrsta}
+    </span>
+  );
+}
+
+// status licence firme (iz Kupci i licence), za upozorenje uz intervenciju
+function licencaIndex(kupci) {
+  const m = new Map();
+  for (const f of grupisiPoFirmi(kupci, new Map())) m.set(f.key, f);
+  return m;
+}
+function licencaGrupa(f) {
+  if (!f) return "Nije kupac";
+  if (f.status === "Isteklo") return "Istekla";
+  if (f.status === "Ističe uskoro") return "Ističe uskoro";
+  if (f.status === "Aktivno") return "Aktivna";
+  return "Nije kupac";
+}
+
 function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
   const [f, setF] = useState(
-    initial || {
-      firma: "", tehnicar: SORTED_FOR_TECH.includes(currentUser) ? currentUser : "",
-      datum: todayStr(), opis: "", napomena: "",
-    }
+    initial
+      ? { ...initial, vrsta: initial.vrsta || "", proizvod: initial.proizvod || "" }
+      : {
+          firma: "", tehnicar: SORTED_FOR_TECH.includes(currentUser) ? currentUser : "",
+          datum: todayStr(), vrsta: "", proizvod: "", opis: "", napomena: "",
+        }
   );
   const [busy, setBusy] = useState(false);
   const uniqueFirme = useMemo(
     () => Array.from(new Set(kupci.map((k) => k.naziv_firme).filter(Boolean))).sort((a, b) => a.localeCompare(b, "hr")),
     [kupci]
   );
+  const proizvodiFirme = useMemo(() => {
+    const key = companyKey(f.firma);
+    const vlastiti = key ? kupci.filter((k) => companyKey(k.naziv_firme) === key).map((k) => proizvodPorodica(k.naziv_proizvoda)).filter((p) => p !== BEZ_PROIZVODA) : [];
+    return [...new Set([...vlastiti, ...PODRSKA_PROIZVODI])];
+  }, [f.firma, kupci]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const submit = async () => {
     if (!f.firma.trim() || !f.tehnicar || !f.opis.trim() || !currentUser) return;
     setBusy(true);
     try {
-      const payload = { ...f, updated_by: currentUser, updated_at: new Date().toISOString() };
+      const payload = { ...f, vrsta: f.vrsta || null, proizvod: (f.proizvod || "").trim() || null, updated_by: currentUser, updated_at: new Date().toISOString() };
       if (!initial) {
         payload.created_by = currentUser;
         payload.created_at = new Date().toISOString();
@@ -1497,6 +2022,9 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
       <datalist id="firme-list">
         {uniqueFirme.map((name) => <option key={name} value={name} />)}
       </datalist>
+      <datalist id="podrska-proizvodi-form">
+        {proizvodiFirme.map((p) => <option key={p} value={p} />)}
+      </datalist>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Firma" required>
           <input list="firme-list" className={inputCls} value={f.firma} onChange={set("firma")} placeholder="Odaberi ili upiši naziv" />
@@ -1508,6 +2036,15 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
           </select>
         </Field>
         <Field label="Datum" required><input type="date" className={inputCls} value={f.datum} onChange={set("datum")} /></Field>
+        <Field label="Vrsta intervencije">
+          <select className={inputCls} value={f.vrsta || ""} onChange={set("vrsta")}>
+            <option value="">— odaberi —</option>
+            {PODRSKA_VRSTE.map((v) => <option key={v}>{v}</option>)}
+          </select>
+        </Field>
+        <Field label="Proizvod" hint="npr. SOLIDWORKS, SolidCAM, DraftSight">
+          <input list="podrska-proizvodi-form" className={inputCls} value={f.proizvod || ""} onChange={set("proizvod")} placeholder="Odaberi ili upiši" />
+        </Field>
       </div>
       <Field label="Opis intervencije" required>
         <textarea className={inputCls} rows={3} value={f.opis} onChange={set("opis")} placeholder="Šta je urađeno, koji problem je riješen..." />
@@ -1523,78 +2060,355 @@ function PodrskaForm({ initial, currentUser, kupci, onSave, onClose }) {
   );
 }
 
+// Brzi unos intervencije direktno iznad liste
+function PodrskaBrziUnos({ currentUser, kupci, firme, onAdd }) {
+  const prazno = () => ({ opis: "", firma: "", vrsta: "", proizvod: "", tehnicar: SORTED_FOR_TECH.includes(currentUser) ? currentUser : "", datum: todayStr() });
+  const [f, setF] = useState(prazno);
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const proizvodi = useMemo(() => {
+    const key = companyKey(f.firma);
+    const vlastiti = key ? kupci.filter((k) => companyKey(k.naziv_firme) === key).map((k) => proizvodPorodica(k.naziv_proizvoda)).filter((p) => p !== BEZ_PROIZVODA) : [];
+    return [...new Set([...vlastiti, ...PODRSKA_PROIZVODI])];
+  }, [f.firma, kupci]);
+  const ok = f.opis.trim() && f.firma.trim() && f.tehnicar && f.datum && currentUser;
+  const spremi = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    try {
+      const now = new Date().toISOString();
+      await onAdd({
+        firma: f.firma.trim(), tehnicar: f.tehnicar, datum: f.datum, opis: f.opis.trim(), napomena: "",
+        vrsta: f.vrsta || null, proizvod: f.proizvod.trim() || null,
+        created_by: currentUser, created_at: now, updated_by: currentUser, updated_at: now,
+      });
+      setF({ ...prazno(), tehnicar: f.tehnicar, datum: f.datum });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sel = "h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-[12.5px] text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500";
+  return (
+    <div className="mx-4 mt-3 mb-1 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20">
+      <datalist id="podrska-brzo-firme">{firme.map((n) => <option key={n} value={n} />)}</datalist>
+      <datalist id="podrska-brzo-proizvodi">{proizvodi.map((p) => <option key={p} value={p} />)}</datalist>
+      <input aria-label="Opis nove intervencije" value={f.opis} onChange={set("opis")}
+        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); spremi(); } }}
+        placeholder="Nova intervencija — šta je urađeno? npr. „Aktivacija licence nakon zamjene računara…“"
+        className="w-full bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none py-1" />
+      <div className="flex flex-wrap items-center gap-2 mt-2">
+        <input aria-label="Firma" list="podrska-brzo-firme" value={f.firma} onChange={set("firma")} placeholder="Firma…" className={sel + " w-48"} />
+        <select aria-label="Vrsta intervencije" value={f.vrsta} onChange={set("vrsta")} className={sel}>
+          <option value="">Vrsta…</option>
+          {PODRSKA_VRSTE.map((v) => <option key={v}>{v}</option>)}
+        </select>
+        <input aria-label="Proizvod" list="podrska-brzo-proizvodi" value={f.proizvod} onChange={set("proizvod")} placeholder="Proizvod…" className={sel + " w-36"} />
+        <select aria-label="Tehničar" value={f.tehnicar} onChange={set("tehnicar")} className={sel}>
+          <option value="">Tehničar…</option>
+          {SORTED_FOR_TECH.map((n) => <option key={n}>{n}</option>)}
+        </select>
+        <input aria-label="Datum" type="date" value={f.datum} onChange={set("datum")} className={sel} />
+        <span className="flex-1" />
+        <span className="hidden md:inline text-xs text-slate-400">Enter za spremanje</span>
+        <button type="button" className={btnPrimary + " h-8 text-[13px]"} disabled={!ok || busy} onClick={spremi}>{busy ? "Čuvam..." : "Spremi"}</button>
+      </div>
+    </div>
+  );
+}
+
 export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fFirma, setFFirma] = useState("Sve");
   const [fTeh, setFTeh] = useState("Svi");
+  const [fVrsta, setFVrsta] = useState("Sve");
+  const [fPeriod, setFPeriod] = useState("Bilo kada");
+  const [fLic, setFLic] = useState("Sve");
+  const [limit, setLimit] = useState(60);
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
 
+  useEffect(() => { setLimit(60); }, [q, fFirma, fTeh, fVrsta, fPeriod, fLic]);
+
+  const licIdx = useMemo(() => licencaIndex(kupci), [kupci]);
+  const licOf = (firma) => licIdx.get(companyKey(firma));
+
   const firme = useMemo(() => {
     const set = new Set([...kupci.map((k) => k.naziv_firme), ...data.map((d) => d.firma)]);
-    return Array.from(set).filter(Boolean).sort();
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "hr"));
   }, [kupci, data]);
 
-  const filtered = [...data].sort((a, b) => new Date(b.datum) - new Date(a.datum)).filter((s) => {
-    if (fFirma !== "Sve" && s.firma !== fFirma) return false;
-    if (fTeh !== "Svi" && s.tehnicar !== fTeh) return false;
-    if (q && !((s.firma || "") + (s.opis || "")).toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
+  const qq = q.trim().toLowerCase();
+  const passes = (s, skip = {}) =>
+    (!qq || [s.firma, s.opis, s.napomena, s.proizvod].join(" ").toLowerCase().includes(qq)) &&
+    (skip.firma || fFirma === "Sve" || s.firma === fFirma) &&
+    (skip.teh || fTeh === "Svi" || s.tehnicar === fTeh) &&
+    (skip.vrsta || fVrsta === "Sve" || vrstaOf(s) === fVrsta) &&
+    (fLic === "Sve" || licencaGrupa(licOf(s.firma)) === fLic) &&
+    podrskaPeriodOk(s.datum, fPeriod);
+
+  const filtered = useMemo(() => data.filter((s) => passes(s))
+    .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")) || String(b.created_at || "").localeCompare(String(a.created_at || ""))),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [data, qq, fFirma, fTeh, fVrsta, fPeriod, fLic, licIdx]);
+
+  // ---------- pločice: tekući mjesec ----------
+  const ovaj = data.filter((s) => podrskaPeriodOk(s.datum, "Ovaj mjesec"));
+  const prosli = data.filter((s) => podrskaPeriodOk(s.datum, "Prošli mjesec"));
+  const razlika = ovaj.length - prosli.length;
+  const firmiOvaj = new Set(ovaj.map((s) => companyKey(s.firma))).size;
+  const vrsteOvaj = new Map();
+  ovaj.forEach((s) => { if (PODRSKA_VRSTE.includes(s.vrsta)) vrsteOvaj.set(s.vrsta, (vrsteOvaj.get(s.vrsta) || 0) + 1); });
+  const topVrsta = [...vrsteOvaj.entries()].sort((a, b) => b[1] - a[1])[0];
+  const bezLic = ovaj.filter((s) => licencaGrupa(licOf(s.firma)) === "Istekla");
+  const bezLicFirmi = new Set(bezLic.map((s) => companyKey(s.firma))).size;
+
+  // ---------- desna kolona ----------
+  const poTeh = useMemo(() => {
+    const m = new Map();
+    data.filter((s) => passes(s, { teh: true })).forEach((s) => { const k = s.tehnicar || "—"; m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, qq, fFirma, fVrsta, fPeriod, fLic, licIdx]);
+  const maxTeh = poTeh.length ? poTeh[0][1] : 1;
+  const poVrsti = useMemo(() => {
+    const m = new Map();
+    data.filter((s) => passes(s, { vrsta: true })).forEach((s) => { const k = vrstaOf(s); m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, qq, fFirma, fTeh, fPeriod, fLic, licIdx]);
+  const ukVrsta = poVrsti.reduce((s, [, n]) => s + n, 0);
+  const topFirme = useMemo(() => {
+    const m = new Map();
+    data.filter((s) => podrskaPeriodOk(s.datum, "Zadnjih 90 dana")).forEach((s) => {
+      const k = companyKey(s.firma) || s.firma;
+      const e = m.get(k) || { naziv: s.firma, n: 0 };
+      e.n++;
+      m.set(k, e);
+    });
+    return [...m.values()].sort((a, b) => b.n - a.n).slice(0, 5);
+  }, [data]);
+
+  const nTeh = new Set(data.map((s) => s.tehnicar).filter(Boolean)).size;
+  const nFirmi = new Set(data.map((s) => companyKey(s.firma))).size;
+  const filtriran = qq || fFirma !== "Sve" || fTeh !== "Svi" || fVrsta !== "Sve" || fPeriod !== "Bilo kada" || fLic !== "Sve";
 
   const handleSave = async (payload) => {
     if (editing) await onUpdate(editing.id, payload);
     else await onAdd(payload);
   };
+  const exportCSV = () => {
+    const headers = ["Datum", "Firma", "Tehničar", "Vrsta", "Proizvod", "Opis", "Napomena", "Status licence", "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene"];
+    const rows = filtered.map((s) => [s.datum, s.firma, s.tehnicar, s.vrsta || "", s.proizvod || "", s.opis, s.napomena, licencaGrupa(licOf(s.firma)), s.created_by, s.created_at, s.updated_by, s.updated_at]);
+    downloadCSV(`tehnicka_podrska_${todayStr()}.csv`, headers, rows);
+  };
+
+  const shown = filtered.slice(0, limit);
+  const grupe = [];
+  for (const s of shown) {
+    const d = String(s.datum || "").slice(0, 10);
+    let g = grupe[grupe.length - 1];
+    if (!g || g.key !== d) { g = { key: d, items: [] }; grupe.push(g); }
+    g.items.push(s);
+  }
+  const grupaCount = (d) => filtered.filter((s) => String(s.datum || "").slice(0, 10) === d).length;
+
+  const licUpozorenje = (firma) => {
+    const f = licOf(firma);
+    if (!f || !f.sljedeca) return null;
+    if (f.status === "Isteklo") return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 dark:text-red-300 border border-red-300 dark:border-red-800 bg-white dark:bg-slate-900 px-2 py-px rounded-full whitespace-nowrap" title="Sve licence ove firme su istekle — prilika za obnovu">
+        <AlertTriangle size={12} /> Licenca istekla {kratkiDatum(f.sljedeca)}
+      </span>
+    );
+    if (f.status === "Ističe uskoro") return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 px-2 py-px rounded-full whitespace-nowrap" title={`Pretplata ističe ${fmtDate(f.sljedeca)}`}>
+        <Clock size={12} /> Obnova {dokle(f.sljedeca)}
+      </span>
+    );
+    return null;
+  };
 
   return (
     <div>
-      <Toolbar>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi ili opisu..." />
-        <select className={inputCls + " w-auto"} value={fFirma} onChange={(e) => setFFirma(e.target.value)}>
-          <option>Sve</option>
-          {firme.map((f) => <option key={f}>{f}</option>)}
-        </select>
-        <select className={inputCls + " w-auto"} value={fTeh} onChange={(e) => setFTeh(e.target.value)}>
-          <option>Svi</option>
-          {SORTED_FOR_TECH.map((n) => <option key={n}>{n}</option>)}
-        </select>
-        <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Nova intervencija</button>
-      </Toolbar>
-
-      {filtered.length === 0 ? (
-        <EmptyState icon={Wrench} title="Nema zapisa o tehničkoj podršci"
-          subtitle="Svaki put kad tehničar odradi podršku za firmu, unosi zapis ovdje — tako se gradi historija po kupcu."
-          action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu intervenciju</button>} />
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map((s) => (
-            <div key={s.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md dark:hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-150">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{s.firma}</h4>
-                    {onViewCompany && (
-                      <button onClick={() => onViewCompany(s.firma)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
-                        <ExternalLink size={12} />
-                      </button>
-                    )}
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center gap-1"><Calendar size={11} /> {fmtDate(s.datum)}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 flex items-center gap-1"><Wrench size={11} /> {s.tehnicar}</span>
-                  </div>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 mt-2">{s.opis}</p>
-                  {s.napomena && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{s.napomena}</p>}
-                  <MetaLine record={s} />
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button className={btnGhostIcon} onClick={() => setEditing(s)} title="Uredi"><Pencil size={15} /></button>
-                  <ConfirmDelete label={"zapis"} onConfirm={() => onDelete(s.id)} />
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* ---------- zaglavlje ---------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Tehnička podrška</h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {fmtN(data.length)} {plural(data.length, "intervencija", "intervencije", "intervencija")} · {fmtN(nFirmi)} {plural(nFirmi, "firma", "firme", "firmi")} · {nTeh} {plural(nTeh, "tehničar", "tehničara", "tehničara")}
+          </p>
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={headerBtnSec} onClick={exportCSV} disabled={filtered.length === 0}><Download size={15} /> Izvoz</button>
+          <button type="button" className={btnPrimary + " h-9"} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Nova intervencija</button>
+        </div>
+      </div>
+
+      {/* ---------- pločice (tekući mjesec) ---------- */}
+      <div className="flex flex-wrap gap-2.5 mb-4">
+        <KpiTile icon={Wrench} label={`Intervencija u ${MJESECI_LOK[new Date().getMonth()]}`}
+          value={fmtN(ovaj.length)} active={fPeriod === "Ovaj mjesec" && fVrsta === "Sve" && fLic === "Sve"}
+          onClick={() => { setFPeriod(fPeriod === "Ovaj mjesec" ? "Bilo kada" : "Ovaj mjesec"); setFVrsta("Sve"); setFLic("Sve"); }}
+          sub={razlika === 0 ? "isto kao prošli mjesec" : `${razlika > 0 ? "+" : "−"}${Math.abs(razlika)} u odnosu na prošli mjesec`} />
+        <KpiTile icon={Building2} label="Firmi podržano" value={fmtN(firmiOvaj)} sub="u tekućem mjesecu"
+          onClick={() => { setFPeriod("Ovaj mjesec"); }} />
+        <KpiTile icon={topVrsta ? VRSTA_STIL[topVrsta[0]].icon : Wrench} label={topVrsta ? `Najčešće: ${topVrsta[0].toLowerCase()}` : "Najčešća vrsta"}
+          value={topVrsta ? fmtN(topVrsta[1]) : "—"} active={!!topVrsta && fVrsta === topVrsta[0] && fPeriod === "Ovaj mjesec"}
+          onClick={() => { if (topVrsta) { setFVrsta(fVrsta === topVrsta[0] ? "Sve" : topVrsta[0]); setFPeriod("Ovaj mjesec"); } }}
+          sub={topVrsta ? `${Math.round((topVrsta[1] / Math.max(1, ovaj.length)) * 100)}% intervencija ovog mjeseca` : "unesi vrstu pri novom zapisu"} />
+        <KpiTile icon={AlertTriangle} tone="red" label="Podrška bez aktivne licence" value={fmtN(bezLic.length)}
+          active={fLic === "Istekla" && fPeriod === "Ovaj mjesec"}
+          onClick={() => { const on = fLic === "Istekla" && fPeriod === "Ovaj mjesec"; setFLic(on ? "Sve" : "Istekla"); setFPeriod(on ? "Bilo kada" : "Ovaj mjesec"); }}
+          sub={`${bezLicFirmi} ${plural(bezLicFirmi, "firma", "firme", "firmi")} · prilika za obnovu`} />
+      </div>
+
+      <div className="xl:flex xl:items-start xl:gap-4">
+        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+          {/* filteri */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="w-full sm:w-60 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma ili opis..." /></div>
+            <FilterPill label="Firma" value={fFirma} defaultValue="Sve" onChange={setFFirma} options={["Sve", ...firme]} />
+            <FilterPill label="Tehničar" value={fTeh} defaultValue="Svi" onChange={setFTeh} options={["Svi", ...SORTED_FOR_TECH]} />
+            <FilterPill label="Vrsta" value={fVrsta} defaultValue="Sve" onChange={setFVrsta} options={["Sve", ...PODRSKA_VRSTE, BEZ_VRSTE]} />
+            <FilterPill label="Period" value={fPeriod} defaultValue="Bilo kada" onChange={setFPeriod} options={P_PERIODI} />
+            <FilterPill label="Licenca" value={fLic} defaultValue="Sve" onChange={setFLic} options={P_LICENCA} />
+            <span className="ml-auto text-[13px] text-slate-500 dark:text-slate-400 whitespace-nowrap"><b className="text-slate-900 dark:text-slate-100">{fmtN(filtered.length)}</b> {plural(filtered.length, "zapis", "zapisa", "zapisa")}</span>
+          </div>
+
+          {currentUser && <PodrskaBrziUnos currentUser={currentUser} kupci={kupci} firme={firme} onAdd={onAdd} />}
+
+          {filtered.length === 0 ? (
+            <div className="p-4">
+              <EmptyState icon={Wrench} title={data.length === 0 ? "Nema zapisa o tehničkoj podršci" : "Nema zapisa za odabrane filtere"}
+                subtitle={data.length === 0 ? "Svaki put kad tehničar odradi podršku za firmu, unosi zapis ovdje — tako se gradi historija po kupcu." : "Promijeni pretragu ili filtere."}
+                action={data.length === 0 ? <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvu intervenciju</button> : null} />
+            </div>
+          ) : (
+            <div className="pb-2">
+              {grupe.map((g) => (
+                <div key={g.key || "bez"}>
+                  <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {danNaslov(g.key)}
+                    <span className="font-semibold text-slate-400 dark:text-slate-500 tracking-normal">{grupaCount(g.key)}</span>
+                    <span className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                  {g.items.map((s) => {
+                    const v = vrstaOf(s);
+                    const St = VRSTA_STIL[v];
+                    return (
+                      <div key={s.id} className="group flex gap-3 px-4 py-2.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                        <span className={"w-8 h-8 rounded-full inline-flex items-center justify-center shrink-0 " + St.cls} title={v}><St.icon size={15} /></span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{s.firma}</span>
+                            {onViewCompany && (
+                              <button type="button" onClick={() => onViewCompany(s.firma)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme" aria-label="360° pregled firme">
+                                <ExternalLink size={12} />
+                              </button>
+                            )}
+                            <VrstaChip vrsta={s.vrsta} />
+                            {s.proizvod && <ProizvodChip>{s.proizvod}</ProizvodChip>}
+                            {licUpozorenje(s.firma)}
+                          </div>
+                          <p className="text-[13.5px] text-slate-700 dark:text-slate-300 leading-snug mt-1 whitespace-pre-line">{s.opis}</p>
+                          {s.napomena && (
+                            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 flex gap-1.5"><MessageSquare size={13} className="mt-0.5 shrink-0 text-slate-400" /><span className="whitespace-pre-line">{s.napomena}</span></p>
+                          )}
+                          <div className="sm:hidden flex items-center gap-1.5 mt-1.5 text-xs text-slate-500 dark:text-slate-400"><Avatar name={s.tehnicar} size="sm" /> {s.tehnicar}</div>
+                          {s.created_by && s.created_by !== s.tehnicar && (
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Unio: {s.created_by}</div>
+                          )}
+                        </div>
+                        <div className="flex items-start gap-1 shrink-0">
+                          <span className="hidden sm:inline-flex items-center gap-1.5 text-[12.5px] text-slate-600 dark:text-slate-400 mt-1 mr-1 whitespace-nowrap"><Avatar name={s.tehnicar} size="sm" /> {s.tehnicar}</span>
+                          <span className="inline-flex items-center opacity-40 group-hover:opacity-100">
+                            <button className={btnGhostIcon} onClick={() => setEditing(s)} title="Uredi" aria-label="Uredi"><Pencil size={14} /></button>
+                            <ConfirmDelete label={"zapis"} onConfirm={() => onDelete(s.id)} />
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              {filtered.length > limit && (
+                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-center">
+                  <button type="button" className={btnSecondary} onClick={() => setLimit(limit + 60)}>
+                    Prikaži još ({fmtN(filtered.length - limit)} preostalo)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ---------- desna kolona ---------- */}
+        <div className="hidden xl:flex flex-col gap-4 w-[320px] shrink-0">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={fTeh !== "Svi" ? <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFTeh("Svi")}>Svi</button> : <span className="text-[11px] text-slate-400">{filtriran ? "filtrirano" : "ukupno"}</span>}>Po tehničaru</PanelLabel>
+            <div className="flex flex-col gap-2 mt-1">
+              {poTeh.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
+              {poTeh.map(([k, n]) => (
+                <button key={k} type="button" onClick={() => setFTeh(fTeh === k ? "Svi" : k)}
+                  className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1 " + (fTeh === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                  <Avatar name={k} size="sm" />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex justify-between gap-2 text-[12.5px] text-slate-700 dark:text-slate-300"><span className="truncate">{k}</span><b className="text-slate-900 dark:text-slate-100">{n}</b></span>
+                    <span className="block h-1.5 mt-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                      <span className="block h-full rounded-full bg-teal-500" style={{ width: `${Math.round((n / maxTeh) * 100)}%` }} />
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={fVrsta !== "Sve" && <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFVrsta("Sve")}>Sve</button>}>Vrsta intervencije</PanelLabel>
+            {ukVrsta > 0 && (
+              <div className="flex gap-0.5 h-2.5 rounded overflow-hidden mt-1 mb-2" role="img" aria-label="Udio vrsta intervencija">
+                {poVrsti.map(([k, n]) => <div key={k} className={VRSTA_STIL[k].bar} style={{ width: `${(n / ukVrsta) * 100}%` }} title={`${k}: ${n}`} />)}
+              </div>
+            )}
+            <div className="flex flex-col gap-0.5">
+              {poVrsti.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
+              {poVrsti.map(([k, n]) => {
+                const St = VRSTA_STIL[k];
+                return (
+                  <button key={k} type="button" onClick={() => setFVrsta(fVrsta === k ? "Sve" : k)}
+                    className={"flex items-center gap-2 text-left text-[12.5px] rounded-lg -mx-1.5 px-1.5 py-1 " + (fVrsta === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                    <span className={"w-5 h-5 rounded-full inline-flex items-center justify-center " + St.cls}><St.icon size={11} /></span>
+                    <span className="flex-1 text-slate-700 dark:text-slate-300">{k}</span>
+                    <b className="text-slate-900 dark:text-slate-100">{n}</b>
+                    <span className="w-9 text-right text-slate-400">{Math.round((n / Math.max(1, ukVrsta)) * 100)}%</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel>Najviše podrške · 90 dana</PanelLabel>
+            {topFirme.length === 0 && <p className="text-xs text-slate-400">Nema intervencija u zadnjih 90 dana.</p>}
+            {topFirme.map((t) => {
+              const g = licencaGrupa(licOf(t.naziv));
+              const boja = g === "Istekla" ? "text-red-700 dark:text-red-400" : g === "Ističe uskoro" ? "text-amber-700 dark:text-amber-400" : g === "Aktivna" ? "text-green-700 dark:text-green-400" : "text-slate-400";
+              const tacka = g === "Istekla" ? "bg-red-500" : g === "Ističe uskoro" ? "bg-amber-500" : g === "Aktivna" ? "bg-green-500" : "bg-slate-300";
+              return (
+                <button key={t.naziv} type="button" onClick={() => setFFirma(fFirma === t.naziv ? "Sve" : t.naziv)}
+                  className={"w-full text-left flex items-center gap-2.5 py-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 rounded-lg -mx-1.5 px-1.5 " + (fFirma === t.naziv ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/50")}>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{t.naziv}</span>
+                    <span className={"flex items-center gap-1.5 text-[11.5px] " + boja}><span className={"w-1.5 h-1.5 rounded-full " + tacka} />{g === "Nije kupac" ? "nije u Kupcima" : `licenca: ${g.toLowerCase()}`}</span>
+                  </span>
+                  <b className="text-[13px] text-slate-900 dark:text-slate-100">{t.n}</b>
+                  <span className="text-[11.5px] text-slate-400 w-10">interv.</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {(showNew || editing) && (
         <PodrskaForm initial={editing} currentUser={currentUser} kupci={kupci} onSave={handleSave}
