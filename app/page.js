@@ -504,6 +504,20 @@ export default function HomePage() {
     }
   };
 
+  // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
+  const patchReminderRecord = async (tip, id, patch, poruka) => {
+    try {
+      const table = tip === "Potencijal" ? "potencijali" : "lidovi";
+      const rec = await updateRow(table, id, { ...patch, updated_by: currentUser || "—", updated_at: new Date().toISOString() });
+      if (table === "potencijali") setPotencijali((prev) => prev.map((p) => (p.id === id ? rec : p)));
+      else setLidovi((prev) => prev.map((l) => (l.id === id ? rec : l)));
+      showToast(poruka || "Podsjetnik sačuvan");
+    } catch (e) {
+      showToast("Greška pri ažuriranju podsjetnika", "error");
+      throw e;
+    }
+  };
+
   if (checkingAuth || !session) {
     return <AppSkeleton />;
   }
@@ -713,7 +727,14 @@ export default function HomePage() {
                 />
               )}
               {tab === "podsjetnici" && (
-                <PodsjetniciTab potencijali={potencijali} lidovi={lidovi} onClear={clearReminder} />
+                <PodsjetniciTab
+                  potencijali={potencijali}
+                  lidovi={lidovi}
+                  currentUser={currentUser}
+                  onClear={clearReminder}
+                  onPatch={patchReminderRecord}
+                  onViewCompany={setViewingCompany}
+                />
               )}
             </div>
           )}
