@@ -131,7 +131,11 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
   const ukupnoLidova = lidovi.length;
   const konvertovanoLidova = lidovi.filter((l) => l.status === "Konvertovan").length;
   const potencijaliIzLeada = potencijali.filter((p) => p.origin_lead_id);
-  const dobijenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Dobijen").length;
+  // Lead je "postao kupac" ako je njegov povezani potencijal Dobijen ILI je na samom leadu označeno "Postao kupac"
+  // (npr. uvezeni lidovi koji nisu konvertovani kroz CRM pa nemaju povezan potencijal)
+  const dobijeniLeadIds = new Set(potencijaliIzLeada.filter((p) => p.status === "Dobijen").map((p) => p.origin_lead_id));
+  lidovi.forEach((l) => { if (l.postao_kupac) dobijeniLeadIds.add(l.id); });
+  const dobijenoIzLeada = dobijeniLeadIds.size;
   const izgubljenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Izgubljen").length;
   const stopaKonverzije = ukupnoLidova > 0 ? Math.round((konvertovanoLidova / ukupnoLidova) * 100) : 0;
   const stopaDobijanja = konvertovanoLidova > 0 ? Math.round((dobijenoIzLeada / konvertovanoLidova) * 100) : 0;
@@ -527,7 +531,7 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
     initial || {
       naziv_firme: "", grad: "", drzava: "", kontakt_osoba: "", telefon: "", email: "",
       izvor: "", kolega: currentUser || "", status: "Novi", napomena: "",
-      podsjetnik_datum: "", podsjetnik_opis: "",
+      podsjetnik_datum: "", podsjetnik_opis: "", postao_kupac: false,
     }
   );
   const [busy, setBusy] = useState(false);
@@ -580,6 +584,17 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
           <select className={inputCls} value={f.status} onChange={set("status")}>
             {LEAD_STATUSI.map((s) => <option key={s}>{s}</option>)}
           </select>
+        </Field>
+        <Field label="Ishod">
+          <label className="flex items-center gap-2 h-[38px] text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              checked={!!f.postao_kupac}
+              onChange={(e) => setF({ ...f, postao_kupac: e.target.checked })}
+            />
+            Postao kupac
+          </label>
         </Field>
       </div>
       {duplicateMatch && (
@@ -636,12 +651,12 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
   const exportCSV = () => {
     const headers = [
       "Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor",
-      "Kolega", "Status", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
+      "Kolega", "Status", "Postao kupac", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
       "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
     ];
     const rows = filtered.map((l) => [
       l.naziv_firme, l.grad, l.drzava, l.kontakt_osoba, l.telefon, l.email, l.izvor,
-      l.kolega, l.status, l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
+      l.kolega, l.status, l.postao_kupac ? "DA" : "NE", l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
       l.created_by, l.created_at, l.updated_by, l.updated_at,
     ]);
     downloadCSV(`lidovi_${todayStr()}.csv`, headers, rows);
@@ -727,6 +742,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
                       </button>
                     )}
                     <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[l.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{l.status}</span>
+                    {l.postao_kupac && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium">Postao kupac</span>}
                     {l.izvor && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{l.izvor}</span>}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -769,7 +785,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
       {showImport && (
         <ImportModal
           title="Uvezi bazu lidova"
-          columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status", "Napomena (nije obavezno)", "Datum leada (nije obavezno)"]}
+          columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status", "Napomena (nije obavezno)", "Datum leada (nije obavezno)", "Postao kupac DA/NE (nije obavezno)"]}
           existingNames={data.map((l) => l.naziv_firme)}
           onClose={() => setShowImport(false)}
           onImport={async (rows) => {
@@ -788,6 +804,7 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
               kolega: COLLEAGUE_NAMES.includes(r[7]) ? r[7] : currentUser || "",
               status: LEAD_STATUSI.includes(r[8]) ? r[8] : "Novi",
               napomena: r[9] || "", podsjetnik_datum: null, podsjetnik_opis: "",
+              postao_kupac: /^(da|yes|1|true)$/i.test(String(r[11] || "").trim()),
               created_by: currentUser || "Uvoz", created_at: parseLeadDate(r[10]) || new Date().toISOString(),
               updated_by: currentUser || "Uvoz", updated_at: new Date().toISOString(),
             }));
