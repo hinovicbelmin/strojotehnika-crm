@@ -3,14 +3,18 @@ import { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
   Target, Plus, Pencil, Upload, Download, ExternalLink, Square, CheckSquare, AlertTriangle, X,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, History, Users, FileSpreadsheet, CheckCircle2, Trash2,
+  ChevronRight, History, Users, FileSpreadsheet, CheckCircle2, Trash2, MapPin, Phone, Mail, Bell, User,
 } from "lucide-react";
 import {
-  COLLEAGUES, COLLEAGUE_NAMES, POTENCIJAL_STATUSI, STATUS_BOJE, EU_COUNTRIES,
-  inputCls, btnPrimary, btnSecondary, btnGhostIcon, todayStr, fmtDate, downloadCSV,
+  COLLEAGUES, COLLEAGUE_NAMES, POTENCIJAL_STATUSI, EU_COUNTRIES,
+  inputCls, btnPrimary, btnSecondary, btnGhostIcon, todayStr, fmtDate, downloadCSV, reminderUrgency,
   buildCompanyNameIndex, findCompanyMatch, companyKey,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, Toolbar, SearchBox, ImportModal, ConfirmDelete, BulkActionBar } from "./ui";
+import { Modal, Field, EmptyState, SearchBox, ImportModal, ConfirmDelete, BulkActionBar } from "./ui";
+import {
+  Avatar, AvatarStack, StatusPill, FilterPill, ViewChip, MenuButton, SortHead, PageNav, PanelLabel,
+  initials, daysAgo, relDate, ageCls, fmtN, headerBtnSec,
+} from "./crmBits";
 
 export const NEDODIJELJENO = "Nedodijeljeno";
 const NEPOZNATA = "Nepoznata";
@@ -472,66 +476,229 @@ function ObjedinjeniImport({ existing, kupci, currentUser, onImport, onClose }) 
 /*  Tab                                                                    */
 /* ---------------------------------------------------------------------- */
 
-function Pagination({ page, setPage, pageSize, setPageSize, total }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const p = Math.min(page, totalPages);
-  const from = total === 0 ? 0 : (p - 1) * pageSize + 1;
-  const to = Math.min(p * pageSize, total);
+const SVE_KOLEGE = "Sve kolege";
+const SVI_STATUSI = "Svi statusi";
+const SVE_DRZAVE = "Sve države";
+const BILO_KADA = "Bilo kada";
+const ZADNJI_OPCIJE = [BILO_KADA, "Zadnjih 30 dana", "Zadnjih 90 dana", "Prije više od 6 mj.", "Prije više od 12 mj.", "Nikad kontaktirano"];
+
+const DRZAVA_KOD = {
+  "Bosna i Hercegovina": "BA", Hrvatska: "HR", Albanija: "AL", Srbija: "RS", Slovenija: "SI", "Crna Gora": "ME",
+  "Sjeverna Makedonija": "MK", Makedonija: "MK", Kosovo: "XK", Njemačka: "DE", Austrija: "AT", Italija: "IT",
+  Mađarska: "HU", Švicarska: "CH", Francuska: "FR", Nizozemska: "NL", Poljska: "PL", Češka: "CZ", Slovačka: "SK",
+};
+const drzavaKod = (d) => (!d || d === NEPOZNATA ? "?" : DRZAVA_KOD[d] || d.slice(0, 2).toUpperCase());
+
+function zadnjiOk(p, opcija) {
+  if (opcija === BILO_KADA) return true;
+  const n = daysAgo(p.zadnji_kontakt);
+  if (opcija === "Nikad kontaktirano") return n == null;
+  if (n == null) return opcija === "Prije više od 6 mj." || opcija === "Prije više od 12 mj.";
+  if (opcija === "Zadnjih 30 dana") return n <= 30;
+  if (opcija === "Zadnjih 90 dana") return n <= 90;
+  if (opcija === "Prije više od 6 mj.") return n > 182;
+  if (opcija === "Prije više od 12 mj.") return n > 365;
+  return true;
+}
+
+function kontaktiOf(p) {
+  const out = [];
+  if (p.kontakt_osoba || p.telefon || p.email) {
+    out.push({ ime: p.kontakt_osoba, funkcija: p.kontakt_funkcija, telefon: p.telefon, email: p.email, glavni: true });
+  }
+  for (const k of p.dodatni_kontakti || []) out.push({ ...k, glavni: false });
+  return out;
+}
+const firstOf = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)[0] || "";
+
+/* ---------- Bočni panel firme ---------- */
+function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onViewCompany }) {
+  const [novi, setNovi] = useState("");
+  const [datum, setDatum] = useState(todayStr());
+  const [busy, setBusy] = useState(false);
+  const [sveH, setSveH] = useState(false);
+  const [sviK, setSviK] = useState(false);
+
+  const kontakti = kontaktiOf(p);
+  const historija = useMemo(() => [...(p.historija || [])].sort((a, b) => (b.datum || "").localeCompare(a.datum || "")), [p.historija]);
+  const prodavaci = prodavaciOf(p);
+  const glavni = p.kolega && p.kolega !== NEDODIJELJENO ? p.kolega : prodavaci[0];
+  const lokacija = [p.adresa, p.grad].filter(Boolean).join(", ");
+
+  const dodajZapis = async () => {
+    if (!novi.trim() || !currentUser) return;
+    setBusy(true);
+    try {
+      const zapis = { datum: datum || todayStr(), kolega: currentUser, kontakt: "", opis: novi.trim() };
+      const nova = [zapis, ...(p.historija || [])];
+      await onUpdate(p.id, { historija: nova, zadnji_kontakt: maxDatum(nova), updated_by: currentUser, updated_at: new Date().toISOString() });
+      setNovi("");
+      setDatum(todayStr());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const promijeniStatus = async (status) => {
+    if (!currentUser) return;
+    const patch = { status, updated_by: currentUser, updated_at: new Date().toISOString() };
+    if (status === "Dobijen" && !p.datum_dobijanja) patch.datum_dobijanja = todayStr();
+    await onUpdate(p.id, patch);
+  };
+
+  const shownK = sviK ? kontakti : kontakti.slice(0, 4);
+  const shownH = sveH ? historija : historija.slice(0, 5);
+  const iconLink = "w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-teal-700 hover:border-teal-300 dark:hover:text-teal-300 dark:hover:border-teal-700";
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900">
-      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-        <span>Prikaz po strani:</span>
-        <select className="text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
-          {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-      </div>
-      <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-        <span>{total === 0 ? "0 rezultata" : `${from}–${to} od ${total}`}</span>
-        <div className="flex items-center gap-1">
-          <button className={btnGhostIcon} disabled={p <= 1} onClick={() => setPage(p - 1)}><ChevronLeft size={16} /></button>
-          <span className="px-2">Strana {p} / {totalPages}</span>
-          <button className={btnGhostIcon} disabled={p >= totalPages} onClick={() => setPage(p + 1)}><ChevronRight size={16} /></button>
+    <div className="bg-white dark:bg-slate-900 xl:border border-slate-200 dark:border-slate-700 xl:rounded-2xl shadow-xl xl:shadow-lg xl:shadow-slate-900/5 min-h-full xl:min-h-0 flex flex-col">
+      {/* zaglavlje */}
+      <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug break-words">{p.naziv_firme}</h3>
+            {(lokacija || p.drzava) && (
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-start gap-1">
+                <MapPin size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                <span>{lokacija}{lokacija && p.drzava ? " · " : ""}{p.drzava}</span>
+              </p>
+            )}
+          </div>
+          <button type="button" aria-label="Zatvori panel" onClick={onClose} className={btnGhostIcon}><X size={17} /></button>
         </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="relative inline-flex">
+            <StatusPill status={p.status} />
+            <select aria-label="Promijeni status" value={p.status || ""} disabled={!currentUser}
+              onChange={(e) => promijeniStatus(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-default">
+              {(POTENCIJAL_STATUSI.includes(p.status) ? POTENCIJAL_STATUSI : [p.status, ...POTENCIJAL_STATUSI]).map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </span>
+          {p.djelatnost && <span className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-2.5 py-0.5 max-w-full truncate">{p.djelatnost}</span>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-slate-600 dark:text-slate-300">
+          {prodavaci.length === 0 ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{NEDODIJELJENO}</span>
+          ) : (
+            [glavni, ...prodavaci.filter((x) => x !== glavni)].map((n, i) => (
+              <span key={n} className="inline-flex items-center gap-1.5">
+                <Avatar name={n} size="sm" />
+                <span className={i === 0 ? "font-semibold text-slate-800 dark:text-slate-100" : ""}>{n}</span>
+                {i === 0 && prodavaci.length > 1 && <span className="text-[11px] text-slate-400">glavni</span>}
+              </span>
+            ))
+          )}
+        </div>
+
+        {p.podsjetnik_datum && (
+          <div className={"inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full " + reminderUrgency(p.podsjetnik_datum).cls}>
+            <Bell size={12} /> {fmtDate(p.podsjetnik_datum)}{p.podsjetnik_opis ? ` — ${p.podsjetnik_opis}` : ""}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <button type="button" className={btnPrimary + " !py-1.5"} onClick={onEdit}><Pencil size={14} /> Uredi</button>
+          {onViewCompany && <button type="button" className={btnSecondary + " !py-1.5"} onClick={() => onViewCompany(p.naziv_firme)}><ExternalLink size={14} /> 360°</button>}
+          <div className="flex-1" />
+          <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
+        </div>
+      </div>
+
+      {/* kontakti */}
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+        <PanelLabel>Kontakti · {kontakti.length}</PanelLabel>
+        {kontakti.length === 0 ? (
+          <p className="text-[13px] text-slate-400 dark:text-slate-500">Nema unesenih kontakata.</p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {shownK.map((k, i) => {
+              const tel = firstOf(k.telefon);
+              const mail = firstOf(k.email);
+              return (
+                <div key={i} className="flex items-center gap-2.5 py-2.5 first:pt-0.5">
+                  <span className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold inline-flex items-center justify-center shrink-0">
+                    {k.ime ? initials(k.ime) : <User size={14} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      <span className="truncate">{k.ime || "(bez imena)"}</span>
+                      {k.glavni && kontakti.length > 1 && <span className="text-[10px] font-bold text-teal-700 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 rounded-full shrink-0">glavni</span>}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ")}>
+                      {[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
+                  {tel && <a href={`tel:${tel.replace(/[^\d+]/g, "")}`} className={iconLink} aria-label={`Nazovi ${k.ime || ""}`} title={tel}><Phone size={14} /></a>}
+                  {mail && <a href={`mailto:${mail}`} className={iconLink} aria-label={`Pošalji mail ${k.ime || ""}`} title={mail}><Mail size={14} /></a>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {kontakti.length > 4 && (
+          <button type="button" onClick={() => setSviK(!sviK)} className="mt-1 text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline">
+            {sviK ? "Prikaži manje" : `Prikaži sve (${kontakti.length})`}
+          </button>
+        )}
+      </div>
+
+      {/* historija */}
+      <div className="px-5 py-4 flex-1">
+        <PanelLabel>Historija kontaktiranja · {historija.length}</PanelLabel>
+        <div className="flex gap-2 mb-4">
+          <input aria-label="Novi zapis historije" className={inputCls + " !py-1.5"} placeholder={currentUser ? "Šta je dogovoreno? (Enter)" : "Odaberi svoje ime u meniju"}
+            value={novi} disabled={!currentUser || busy} onChange={(e) => setNovi(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") dodajZapis(); }} />
+          <input type="date" aria-label="Datum zapisa" className={inputCls + " !py-1.5 !w-[138px] shrink-0"} value={datum} onChange={(e) => setDatum(e.target.value)} />
+        </div>
+        {historija.length === 0 ? (
+          <p className="text-[13px] text-slate-400 dark:text-slate-500">Još nema zapisa.</p>
+        ) : (
+          <ol className="relative">
+            {shownH.map((h, i) => (
+              <li key={i} className="relative flex gap-3 pb-4 last:pb-0">
+                {i < shownH.length - 1 && <span className="absolute left-[13px] top-8 bottom-0 w-0.5 bg-slate-100 dark:bg-slate-800" />}
+                <Avatar name={h.kolega || "?"} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-800 dark:text-slate-100">{h.kolega || "—"}</span>
+                    {" · "}{h.datum ? fmtDate(h.datum) : "bez datuma"}
+                    {h.kontakt ? <span className="text-slate-400"> · {h.kontakt}</span> : null}
+                  </div>
+                  <p className="text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line mt-0.5 break-words">{h.opis}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+        {historija.length > 5 && (
+          <button type="button" onClick={() => setSveH(!sveH)} className="mt-3 text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline">
+            {sveH ? "Prikaži manje" : `Prikaži svih ${historija.length} zapisa`}
+          </button>
+        )}
+        {p.napomena && (
+          <div className="mt-5">
+            <PanelLabel>Napomena</PanelLabel>
+            <p className="text-[13px] text-slate-600 dark:text-slate-300 whitespace-pre-line bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">{p.napomena}</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function SortTh({ label, field, sort, setSort }) {
-  const active = sort.field === field;
-  return (
-    <th className="px-4 py-2.5 cursor-pointer select-none hover:text-slate-800 dark:hover:text-slate-200"
-      onClick={() => setSort({ field, dir: active && sort.dir === "asc" ? "desc" : field === "zadnji_kontakt" && !active ? "desc" : "asc" })}>
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active ? (sort.dir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300 dark:text-slate-600" />}
-      </span>
-    </th>
-  );
-}
-
-function ProdavaciCell({ p }) {
-  const svi = prodavaciOf(p);
-  if (svi.length === 0) return <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{NEDODIJELJENO}</span>;
-  const glavni = p.kolega && p.kolega !== NEDODIJELJENO ? p.kolega : svi[0];
-  const ostali = svi.filter((x) => x !== glavni);
-  return (
-    <span className="inline-flex items-center gap-1.5" title={svi.join(", ")}>
-      {glavni}
-      {ostali.length > 0 && <span className="text-[11px] font-semibold px-1.5 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">+{ostali.length}</span>}
-    </span>
-  );
-}
-
 export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed }) {
   const [q, setQ] = useState("");
-  const [fKolega, setFKolega] = useState("Sve kolege");
-  const [fStatus, setFStatus] = useState("Svi statusi");
-  const [fDrzava, setFDrzava] = useState("Sve države");
-  const [sort, setSort] = useState({ field: "naziv_firme", dir: "asc" });
+  const [fKolega, setFKolega] = useState(SVE_KOLEGE);
+  const [fStatus, setFStatus] = useState(SVI_STATUSI);
+  const [fDrzava, setFDrzava] = useState(SVE_DRZAVE);
+  const [fZadnji, setFZadnji] = useState(BILO_KADA);
+  const [sort, setSort] = useState({ field: "zadnji_kontakt", dir: "desc" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [openId, setOpenId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -548,24 +715,65 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetStatus]);
 
-  useEffect(() => { setPage(1); }, [q, fKolega, fStatus, fDrzava, sort]);
+  useEffect(() => { setPage(1); }, [q, fKolega, fStatus, fDrzava, fZadnji, sort]);
+
+  const openP = openId ? data.find((p) => p.id === openId) : null;
+
+  /* ---- brzi prikazi ---- */
+  const VIEWS = useMemo(() => [
+    { id: "sve", label: "Sve firme", set: {} },
+    ...(currentUser ? [{ id: "moje", label: "Moje firme", set: { kolega: currentUser } }] : []),
+    { id: "nedodijeljene", label: "Nedodijeljene", set: { kolega: NEDODIJELJENO } },
+    { id: "nepoznata", label: "Nepoznata država", set: { drzava: NEPOZNATA } },
+    { id: "stari", label: "Bez kontakta > 12 mj.", set: { zadnji: "Prije više od 12 mj." } },
+    { id: "dobijeni", label: "Dobijeni kupci", set: { status: "Dobijen" } },
+  ], [currentUser]);
+
+  const matches = (p, f) => {
+    const kol = f.kolega || SVE_KOLEGE, st = f.status || SVI_STATUSI, dr = f.drzava || SVE_DRZAVE, zk = f.zadnji || BILO_KADA;
+    if (kol === NEDODIJELJENO) { if (prodavaciOf(p).length > 0) return false; }
+    else if (kol !== SVE_KOLEGE && !prodavaciOf(p).includes(kol)) return false;
+    if (st !== SVI_STATUSI && p.status !== st) return false;
+    if (dr !== SVE_DRZAVE && (p.drzava || NEPOZNATA) !== dr) return false;
+    if (!zadnjiOk(p, zk)) return false;
+    return true;
+  };
+
+  const viewCounts = useMemo(() => {
+    const out = {};
+    for (const v of VIEWS) out[v.id] = v.id === "sve" ? data.length : data.filter((p) => matches(p, v.set)).length;
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, VIEWS]);
+
+  const cur = { kolega: fKolega, status: fStatus, drzava: fDrzava, zadnji: fZadnji };
+  const isView = (v) =>
+    fKolega === (v.set.kolega || SVE_KOLEGE) && fStatus === (v.set.status || SVI_STATUSI) &&
+    fDrzava === (v.set.drzava || SVE_DRZAVE) && fZadnji === (v.set.zadnji || BILO_KADA);
+  const applyView = (v) => {
+    setFKolega(v.set.kolega || SVE_KOLEGE);
+    setFStatus(v.set.status || SVI_STATUSI);
+    setFDrzava(v.set.drzava || SVE_DRZAVE);
+    setFZadnji(v.set.zadnji || BILO_KADA);
+  };
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     const out = data.filter((p) => {
-      if (fKolega === NEDODIJELJENO) { if (prodavaciOf(p).length > 0) return false; }
-      else if (fKolega !== "Sve kolege" && !prodavaciOf(p).includes(fKolega)) return false;
-      if (fStatus !== "Svi statusi" && p.status !== fStatus) return false;
-      if (fDrzava !== "Sve države" && (p.drzava || NEPOZNATA) !== fDrzava) return false;
+      if (!matches(p, cur)) return false;
       if (qq) {
-        const hay = [p.naziv_firme, p.kontakt_osoba, p.email, p.djelatnost, p.grad, p.adresa,
-          ...(p.dodatni_kontakti || []).flatMap((k) => [k.ime, k.email])].join(" ").toLowerCase();
+        const hay = [p.naziv_firme, p.kontakt_osoba, p.email, p.telefon, p.djelatnost, p.grad, p.adresa,
+          ...(p.dodatni_kontakti || []).flatMap((k) => [k.ime, k.email, k.telefon])].join(" ").toLowerCase();
         if (!hay.includes(qq)) return false;
       }
       return true;
     });
     const dir = sort.dir === "asc" ? 1 : -1;
-    const val = (p) => (sort.field === "kolega" ? (prodavaciOf(p)[0] || "") : p[sort.field] || "");
+    const val = (p) => {
+      if (sort.field === "kolega") return prodavaciOf(p)[0] || "";
+      if (sort.field === "kontakti") return String(kontaktiOf(p).length).padStart(4, "0");
+      return p[sort.field] || "";
+    };
     out.sort((a, b) => {
       const va = val(a), vb = val(b);
       if (!va && vb) return 1;
@@ -573,7 +781,8 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
       return String(va).localeCompare(String(vb), "hr", { sensitivity: "base" }) * dir;
     });
     return out;
-  }, [data, q, fKolega, fStatus, fDrzava, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, q, fKolega, fStatus, fDrzava, fZadnji, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((Math.min(page, totalPages) - 1) * pageSize, Math.min(page, totalPages) * pageSize);
@@ -599,38 +808,33 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
     downloadCSV(`potencijali_${todayStr()}.csv`, headers, rows);
   };
 
-  const statusBadge = (s) => (
-    <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_BOJE[s] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{s}</span>
-  );
+  const visePro = useMemo(() => data.filter((p) => prodavaciOf(p).length > 1).length, [data]);
+  const nedod = viewCounts.nedodijeljene || 0;
 
   return (
     <div>
-      <div className="grid items-center gap-2 mb-3"
-        style={{ gridTemplateColumns: "minmax(160px,420px) minmax(70px,170px) minmax(70px,150px) minmax(70px,170px) 1fr minmax(70px,150px)" }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži firmu, kontakt, email, grad..." />
-        <select className={inputCls} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
-          <option>Sve kolege</option>
-          {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
-          <option value={NEDODIJELJENO}>{NEDODIJELJENO}</option>
-        </select>
-        <select className={inputCls} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option>Svi statusi</option>
-          {POTENCIJAL_STATUSI.map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <select className={inputCls} value={fDrzava} onChange={(e) => setFDrzava(e.target.value)}>
-          <option>Sve države</option>
-          {DRZAVE_FILTER.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        <div />
-        <button className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] transition-all" onClick={exportCSV}>
-          <Download size={15} /> Izvoz CSV
-        </button>
+      {/* ---------- zaglavlje ---------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Baza potencijala</h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {fmtN(data.length)} firmi · {fmtN(visePro)} s više prodavača · {fmtN(nedod)} nedodijeljeno
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <MenuButton label="Uvoz" icon={Upload} className={headerBtnSec} items={[
+            { label: "Objedinjena baza (Excel)", hint: "Potencijali_objedinjeno.xlsx — firme, kontakti, historija", icon: FileSpreadsheet, onClick: () => setShowObjedinjeni(true) },
+            { label: "Jednostavna tabela", hint: "Jedan red = jedna firma, kolone redom", icon: Upload, onClick: () => setShowImport(true) },
+          ]} />
+          <button type="button" className={headerBtnSec} onClick={exportCSV}><Download size={15} /> Izvoz</button>
+          <button type="button" className={btnPrimary + " h-9"} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Nova firma</button>
+        </div>
       </div>
-      <Toolbar>
-        <button className={btnSecondary} onClick={() => setShowObjedinjeni(true)}><FileSpreadsheet size={15} /> Uvezi objedinjenu bazu</button>
-        <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
-        <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj potencijala</button>
-      </Toolbar>
+
+      {/* ---------- brzi prikazi ---------- */}
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-3 -mx-1 px-1">
+        {VIEWS.map((v) => <ViewChip key={v.id} label={v.label} count={viewCounts[v.id]} active={isView(v)} onClick={() => applyView(v)} />)}
+      </div>
 
       {selected.size > 0 && (
         <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
@@ -677,103 +881,142 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
         </BulkActionBar>
       )}
 
-      {filtered.length === 0 ? (
-        <EmptyState icon={Target} title={data.length === 0 ? "Nema unesenih potencijala" : "Nema rezultata za odabrane filtere"}
-          subtitle={data.length === 0 ? "Dodaj ručno ili uvezi objedinjenu bazu potencijala iz Excela." : "Promijeni pretragu ili filtere."}
-          action={data.length === 0 ? <button className={btnPrimary} onClick={() => setShowObjedinjeni(true)}><FileSpreadsheet size={15} /> Uvezi objedinjenu bazu</button> : null} />
-      ) : (
-        <>
-          <div className="hidden sm:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                    <th className="px-3 py-2.5 w-8">
-                      <button onClick={toggleSelectAll} className={btnGhostIcon} title={`Odaberi svih ${filtered.length}`}>
-                        {allFilteredSelected ? <CheckSquare size={15} /> : <Square size={15} />}
-                      </button>
-                    </th>
-                    <SortTh label="Firma" field="naziv_firme" sort={sort} setSort={setSort} />
-                    <SortTh label="Grad" field="grad" sort={sort} setSort={setSort} />
-                    <SortTh label="Država" field="drzava" sort={sort} setSort={setSort} />
-                    <SortTh label="Status" field="status" sort={sort} setSort={setSort} />
-                    <SortTh label="Prodavač" field="kolega" sort={sort} setSort={setSort} />
-                    <SortTh label="Zadnji kontakt" field="zadnji_kontakt" sort={sort} setSort={setSort} />
-                    <th className="px-4 py-2.5"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {pageRows.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(p)}>
-                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => toggleSelect(p.id)} className={btnGhostIcon}>
-                          {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="inline-flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
-                          {p.naziv_firme}
-                          {onViewCompany && (
-                            <button onClick={(e) => { e.stopPropagation(); onViewCompany(p.naziv_firme); }} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
-                              <ExternalLink size={12} />
-                            </button>
-                          )}
-                        </span>
-                        {(p.kontakt_osoba || (p.dodatni_kontakti || []).length > 0) && (
-                          <div className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-xs">
-                            {p.kontakt_osoba}{(p.dodatni_kontakti || []).length > 0 ? ` · +${p.dodatni_kontakti.length} kontakt.` : ""}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.grad || "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.drzava || "—"}</td>
-                      <td className="px-4 py-2.5">{statusBadge(p.status)}</td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap"><ProdavaciCell p={p} /></td>
-                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{p.zadnji_kontakt ? fmtDate(p.zadnji_kontakt) : "—"}</td>
-                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1 justify-end">
-                          <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
-                          <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={filtered.length} />
+      <div className="xl:flex xl:items-start xl:gap-4">
+        {/* ---------- tabela ---------- */}
+        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 px-3.5 py-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="w-full sm:w-72 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, email, grad..." /></div>
+            <FilterPill label="Prodavač" value={fKolega} defaultValue={SVE_KOLEGE} onChange={setFKolega} options={[SVE_KOLEGE, ...COLLEAGUE_NAMES, NEDODIJELJENO]} />
+            <FilterPill label="Status" value={fStatus} defaultValue={SVI_STATUSI} onChange={setFStatus} options={[SVI_STATUSI, ...POTENCIJAL_STATUSI]} />
+            <FilterPill label="Država" value={fDrzava} defaultValue={SVE_DRZAVE} onChange={setFDrzava} options={[SVE_DRZAVE, ...DRZAVE_FILTER]} />
+            <FilterPill label="Zadnji kontakt" value={fZadnji} defaultValue={BILO_KADA} onChange={setFZadnji} options={ZADNJI_OPCIJE} />
+            <span className="ml-auto text-[13px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              <b className="text-slate-900 dark:text-slate-100">{fmtN(filtered.length)}</b> {filtered.length === 1 ? "firma" : "firmi"}
+            </span>
           </div>
 
-          <div className="sm:hidden space-y-2.5">
-            {pageRows.map((p) => (
-              <div key={p.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4" onClick={() => setEditing(p)}>
-                <div className="flex items-start justify-between gap-2">
-                  <button onClick={(e) => { e.stopPropagation(); toggleSelect(p.id); }} className={btnGhostIcon + " -ml-1.5 mt-0.5"}>
-                    {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">{p.naziv_firme}</h4>
-                      {statusBadge(p.status)}
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {[p.grad, p.drzava].filter(Boolean).join(", ")} · {prodavaciOf(p).join(", ") || NEDODIJELJENO}
-                      {p.zadnji_kontakt ? ` · ${fmtDate(p.zadnji_kontakt)}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button className={btnGhostIcon} onClick={() => setEditing(p)} title="Uredi"><Pencil size={14} /></button>
-                    <ConfirmDelete label={p.naziv_firme} onConfirm={() => onDelete(p.id)} />
-                  </div>
-                </div>
-              </div>
-            ))}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-              <Pagination page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={filtered.length} />
+          {filtered.length === 0 ? (
+            <div className="p-4">
+              <EmptyState icon={Target} title={data.length === 0 ? "Nema unesenih potencijala" : "Nema rezultata za odabrane filtere"}
+                subtitle={data.length === 0 ? "Dodaj ručno ili uvezi objedinjenu bazu potencijala iz Excela." : "Promijeni pretragu ili filtere."}
+                action={data.length === 0
+                  ? <button className={btnPrimary} onClick={() => setShowObjedinjeni(true)}><FileSpreadsheet size={15} /> Uvezi objedinjenu bazu</button>
+                  : <button className={btnSecondary} onClick={() => { setQ(""); applyView(VIEWS[0]); }}>Poništi filtere</button>} />
             </div>
-          </div>
-        </>
-      )}
+          ) : (
+            <>
+              {/* desktop tabela */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50/80 dark:bg-slate-800/50">
+                      <th className="pl-3.5 pr-0 py-2 w-8">
+                        <button onClick={toggleSelectAll} className={btnGhostIcon} aria-label={`Odaberi svih ${filtered.length}`} title={`Odaberi svih ${filtered.length}`}>
+                          {allFilteredSelected ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
+                        </button>
+                      </th>
+                      <SortHead label="Firma" field="naziv_firme" sort={sort} setSort={setSort} />
+                      <SortHead label="Lokacija" field="grad" sort={sort} setSort={setSort} />
+                      <SortHead label="Status" field="status" sort={sort} setSort={setSort} />
+                      <SortHead label="Prodavači" field="kolega" sort={sort} setSort={setSort} />
+                      <SortHead label="Kontakti" field="kontakti" sort={sort} setSort={setSort} descFirst className="hidden lg:table-cell" />
+                      <SortHead label="Zadnji kontakt" field="zadnji_kontakt" sort={sort} setSort={setSort} descFirst />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {pageRows.map((p) => {
+                      const open = p.id === openId;
+                      const prod = prodavaciOf(p);
+                      const glavni = p.kolega && p.kolega !== NEDODIJELJENO ? p.kolega : prod[0];
+                      const ordered = glavni ? [glavni, ...prod.filter((x) => x !== glavni)] : [];
+                      return (
+                        <tr key={p.id} onClick={() => setOpenId(open ? null : p.id)}
+                          className={"cursor-pointer transition-colors " + (open ? "bg-teal-50/70 dark:bg-teal-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/40")}>
+                          <td className="relative pl-3.5 pr-0 py-2.5" onClick={(e) => e.stopPropagation()}>
+                            {open && <span className="absolute left-0 inset-y-0 w-[3px] bg-teal-600" />}
+                            <button onClick={() => toggleSelect(p.id)} className={btnGhostIcon} aria-label="Odaberi red">
+                              {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} className="text-slate-300 dark:text-slate-600" />}
+                            </button>
+                          </td>
+                          <td className="px-3.5 py-2.5 max-w-[320px]">
+                            <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">{p.naziv_firme}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{p.djelatnost || p.kontakt_osoba || " "}</div>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-2 text-[13px] text-slate-700 dark:text-slate-300">
+                              <span title={p.drzava || NEPOZNATA}
+                                className={"text-[10px] font-bold rounded px-1 py-px border " + (!p.drzava || p.drzava === NEPOZNATA
+                                  ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                  : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300")}>
+                                {drzavaKod(p.drzava)}
+                              </span>
+                              {p.grad || <span className="text-slate-400">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-2.5"><StatusPill status={p.status} /></td>
+                          <td className="px-3.5 py-2.5">
+                            {ordered.length === 0
+                              ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{NEDODIJELJENO}</span>
+                              : <AvatarStack names={ordered} />}
+                          </td>
+                          <td className="hidden lg:table-cell px-3.5 py-2.5 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-600 dark:text-slate-400"><Users size={14} className="text-slate-400" /> {kontaktiOf(p).length}</span>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            {p.zadnji_kontakt ? (
+                              <>
+                                <div className={"text-[13px] font-semibold " + ageCls(p.zadnji_kontakt)}>{relDate(p.zadnji_kontakt)}</div>
+                                <div className="text-[11px] text-slate-400 dark:text-slate-500">{fmtDate(p.zadnji_kontakt)}</div>
+                              </>
+                            ) : <span className="text-[13px] text-slate-400 dark:text-slate-500">nikad</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* mobitel */}
+              <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {pageRows.map((p) => (
+                  <div key={p.id} className="flex items-start gap-2 px-3 py-3" onClick={() => setOpenId(p.id)}>
+                    <button onClick={(e) => { e.stopPropagation(); toggleSelect(p.id); }} className={btnGhostIcon + " -ml-1 mt-0.5"} aria-label="Odaberi red">
+                      {selected.has(p.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} className="text-slate-300" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">{p.naziv_firme}</span>
+                        <StatusPill status={p.status} />
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {[p.grad, p.drzava].filter(Boolean).join(", ")} · {prodavaciOf(p).join(", ") || NEDODIJELJENO}
+                      </p>
+                      {p.zadnji_kontakt && <p className={"text-xs font-medium mt-0.5 " + ageCls(p.zadnji_kontakt)}>{relDate(p.zadnji_kontakt)}</p>}
+                    </div>
+                    <ChevronRight size={16} className="text-slate-300 mt-1" />
+                  </div>
+                ))}
+              </div>
+
+              <PageNav page={page} setPage={setPage} pageSize={pageSize} setPageSize={setPageSize} total={filtered.length} />
+            </>
+          )}
+        </div>
+
+        {/* ---------- bočni panel ---------- */}
+        {openP && (
+          <>
+            <div className="xl:hidden fixed inset-0 z-40 bg-slate-900/40" onClick={() => setOpenId(null)} />
+            <aside className="fixed z-50 inset-y-0 right-0 w-full max-w-md overflow-y-auto bg-white dark:bg-slate-900
+              xl:sticky xl:top-0 xl:z-auto xl:inset-auto xl:w-[400px] xl:max-w-none xl:shrink-0 xl:bg-transparent xl:dark:bg-transparent xl:max-h-[calc(100vh-7rem)] xl:rounded-2xl">
+              <FirmaPanel key={openP.id} p={openP} currentUser={currentUser} onClose={() => setOpenId(null)}
+                onEdit={() => setEditing(openP)} onUpdate={onUpdate}
+                onDelete={async (id) => { await onDelete(id); setOpenId(null); }} onViewCompany={onViewCompany} />
+            </aside>
+          </>
+        )}
+      </div>
 
       {(showNew || editing) && (
         <PotencijalForm initial={editing} currentUser={currentUser} existingList={data} onSave={handleSave}
