@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
+  Calculator, Tags,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -15,6 +16,7 @@ import {
 } from "../components/tabs";
 import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
+import { KalkulatorTab, CjenovnikTab } from "../components/kalkulator";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
 import { Sidebar } from "../components/sidebar";
@@ -26,13 +28,15 @@ const TABS = [
   { id: "forecast", label: "Forecast", icon: LineChart },
   { id: "potencijali", label: "Baza potencijala", icon: Target },
   { id: "lidovi", label: "Lidovi", icon: TrendingUp },
+  { id: "kalkulator", label: "Kalkulator zarade", icon: Calculator },
+  { id: "cjenovnik", label: "Cjenovnik", icon: Tags },
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
 // Tabovi kojima tehničari nemaju pristup (vidljivi, ali "zaleđeni")
-const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi"];
+const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi", "kalkulator", "cjenovnik"];
 
 const CACHE_KEY = "crm_data_cache_v1";
 
@@ -57,6 +61,9 @@ export default function HomePage() {
   const [kupci, setKupci] = useState([]);
   const [podrska, setPodrska] = useState([]);
   const [forecast, setForecast] = useState([]);
+  const [cjenovnik, setCjenovnik] = useState([]);
+  const [kalkulacije, setKalkulacije] = useState([]);
+  const [kalkNacrt, setKalkNacrt] = useState(null); // otvorena kalkulacija ostaje i kad se prebaci na drugi tab
 
   // Auth guard
   useEffect(() => {
@@ -92,6 +99,8 @@ export default function HomePage() {
         setKupci(cached.kupci || []);
         setPodrska(cached.podrska || []);
         setForecast(cached.forecast || []);
+        setCjenovnik(cached.cjenovnik || []);
+        setKalkulacije(cached.kalkulacije || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -103,6 +112,8 @@ export default function HomePage() {
       setKupci(all.kupci);
       setPodrska(all.podrska);
       setForecast(all.forecast || []);
+      setCjenovnik(all.cjenovnik || []);
+      setKalkulacije(all.kalkulacije || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -111,8 +122,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije]);
 
   // Tema (svijetla/tamna) — pamti se po uređaju/browseru
   useEffect(() => {
@@ -504,6 +515,70 @@ export default function HomePage() {
     }
   };
 
+  /* ---------------- Cjenovnik i kalkulacije ---------------- */
+  const addProizvod = async (payload) => {
+    try {
+      const rec = await insertRow("cjenovnik", payload);
+      setCjenovnik((prev) => [rec, ...prev]);
+      showToast("Proizvod dodan u cjenovnik");
+    } catch (e) {
+      showToast("Greška pri čuvanju proizvoda", "error");
+      throw e;
+    }
+  };
+  const updateProizvod = async (id, patch) => {
+    try {
+      const rec = await updateRow("cjenovnik", id, patch);
+      setCjenovnik((prev) => prev.map((p) => (p.id === id ? rec : p)));
+      showToast("Proizvod sačuvan");
+    } catch (e) {
+      showToast("Greška pri čuvanju proizvoda", "error");
+      throw e;
+    }
+  };
+  const deleteProizvod = (id) => {
+    const item = cjenovnik.find((p) => p.id === id);
+    if (!item) return;
+    setCjenovnik((prev) => prev.filter((p) => p.id !== id));
+    scheduleUndoDelete(
+      `${item.naziv} ${item.oznaka || ""}`.trim(),
+      () => setCjenovnik((prev) => [item, ...prev]),
+      () => deleteRow("cjenovnik", id)
+    );
+  };
+  const bulkImportCjenovnik = async (rows) => {
+    try {
+      const inserted = await bulkInsert("cjenovnik", rows);
+      setCjenovnik((prev) => [...inserted, ...prev]);
+      showToast(`Uvezeno ${inserted.length} proizvoda`);
+    } catch (e) {
+      showToast("Greška pri uvozu cjenovnika", "error");
+      throw e;
+    }
+  };
+  const saveKalkulacija = async (id, payload) => {
+    try {
+      const rec = id ? await updateRow("kalkulacije", id, payload) : await insertRow("kalkulacije", payload);
+      setKalkulacije((prev) => (id ? prev.map((x) => (x.id === id ? rec : x)) : [rec, ...prev]));
+      showToast(id ? "Kalkulacija ažurirana" : "Kalkulacija spremljena");
+      return rec;
+    } catch (e) {
+      showToast("Greška pri spremanju kalkulacije", "error");
+      return null;
+    }
+  };
+  const deleteKalkulacija = (id) => {
+    const item = kalkulacije.find((x) => x.id === id);
+    if (!item) return;
+    setKalkulacije((prev) => prev.filter((x) => x.id !== id));
+    if (kalkNacrt && kalkNacrt.id === id) setKalkNacrt({ ...kalkNacrt, id: null, _izmjena: true });
+    scheduleUndoDelete(
+      item.naziv || "kalkulacija",
+      () => setKalkulacije((prev) => [item, ...prev]),
+      () => deleteRow("kalkulacije", id)
+    );
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
     try {
@@ -681,6 +756,29 @@ export default function HomePage() {
                   onBulkUpdate={bulkUpdateLidovi}
                   onBulkDelete={bulkDeleteLidovi}
                   onViewCompany={setViewingCompany}
+                />
+              )}
+              {tab === "kalkulator" && (
+                <KalkulatorTab
+                  cjenovnik={cjenovnik}
+                  kalkulacije={kalkulacije}
+                  potencijali={potencijali}
+                  currentUser={currentUser}
+                  nacrt={kalkNacrt}
+                  setNacrt={setKalkNacrt}
+                  onSave={saveKalkulacija}
+                  onDelete={deleteKalkulacija}
+                  onViewCompany={setViewingCompany}
+                />
+              )}
+              {tab === "cjenovnik" && (
+                <CjenovnikTab
+                  data={cjenovnik}
+                  currentUser={currentUser}
+                  onAdd={addProizvod}
+                  onUpdate={updateProizvod}
+                  onDelete={deleteProizvod}
+                  onBulkImport={bulkImportCjenovnik}
                 />
               )}
               {tab === "kupci" && (
