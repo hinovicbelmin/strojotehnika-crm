@@ -4,6 +4,7 @@ import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
   CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink, Square, CheckSquare,
+  ArrowRight, Trophy, Newspaper, List, LayoutGrid,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
@@ -13,6 +14,7 @@ import {
   getColleagueDept, getForecastStatusWeight, isForecastWon, isForecastLost,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
+import { Avatar, StatusPill, FilterPill, PanelLabel, daysAgo, fmtN, headerBtnSec } from "./crmBits";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
@@ -618,15 +620,61 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
   );
 }
 
-export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulkImport, onConvert, onBulkUpdate, onBulkDelete, onViewCompany }) {
+const MJESECI = ["Januar", "Februar", "Mart", "April", "Maj", "Juni", "Juli", "August", "Septembar", "Oktobar", "Novembar", "Decembar"];
+const L_SVI_IZVORI = "Svi izvori";
+const L_BEZ_IZVORA = "(bez izvora)";
+const L_SVE_KOLEGE = "Sve kolege";
+const L_BILO_KADA = "Bilo kada";
+const L_PERIODI = [L_BILO_KADA, "Ovaj mjesec", "Zadnjih 30 dana", "Zadnjih 90 dana", "Ova godina"];
+const leadDatum = (l) => String(l.created_at || "").slice(0, 10);
+const kratkiDatum = (d) => (d ? `${Number(d.slice(8, 10))}.${Number(d.slice(5, 7))}.` : "");
+
+function periodOk(l, period) {
+  if (period === L_BILO_KADA) return true;
+  const d = leadDatum(l);
+  if (!d) return false;
+  const now = new Date();
+  if (period === "Ovaj mjesec") return d.slice(0, 7) === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  if (period === "Ova godina") return d.slice(0, 4) === String(now.getFullYear());
+  const n = daysAgo(d);
+  if (n == null) return false;
+  return period === "Zadnjih 30 dana" ? n <= 30 : n <= 90;
+}
+
+function KupacBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full whitespace-nowrap">
+      <Trophy size={12} /> Postao kupac
+    </span>
+  );
+}
+
+function LidKpi({ label, value, sub, cls }) {
+  return (
+    <div className={"flex-1 min-w-[140px] rounded-2xl border px-4 py-3.5 " + cls}>
+      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-2xl sm:text-[28px] font-bold tracking-tight leading-tight mt-0.5">{fmtN(value)}</div>
+      <div className="text-xs text-slate-500 dark:text-slate-400">{sub}</div>
+    </div>
+  );
+}
+
+export function LidoviTab({ data, potencijali = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onConvert, onBulkUpdate, onBulkDelete, onViewCompany }) {
   const [q, setQ] = useState("");
   const [fStatus, setFStatus] = useState("Svi");
+  const [fIzvor, setFIzvor] = useState(L_SVI_IZVORI);
+  const [fKolega, setFKolega] = useState(L_SVE_KOLEGE);
+  const [fPeriod, setFPeriod] = useState(L_BILO_KADA);
+  const [prikaz, setPrikaz] = useState("lista");
+  const [limit, setLimit] = useState(100);
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => { setLimit(100); }, [q, fStatus, fIzvor, fKolega, fPeriod]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -637,11 +685,70 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
     });
   };
 
-  const filtered = data.filter((l) => {
-    if (fStatus !== "Svi" && l.status !== fStatus) return false;
-    if (q && !((l.naziv_firme || "") + (l.grad || "") + (l.kontakt_osoba || "")).toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
+  // Isto pravilo kao u Pregledu: povezani potencijal je Dobijen ILI je lead označen "Postao kupac"
+  const kupacIds = useMemo(() => {
+    const s = new Set(potencijali.filter((p) => p.origin_lead_id && p.status === "Dobijen").map((p) => p.origin_lead_id));
+    data.forEach((l) => { if (l.postao_kupac) s.add(l.id); });
+    return s;
+  }, [potencijali, data]);
+  const isKupac = (l) => kupacIds.has(l.id);
+
+  const izvorOf = (l) => (l.izvor || "").trim() || L_BEZ_IZVORA;
+  const izvori = useMemo(() => [...new Set(data.map(izvorOf))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
+
+  const qMatch = (l) => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return true;
+    return [l.naziv_firme, l.grad, l.kontakt_osoba, l.email, l.telefon, l.napomena].join(" ").toLowerCase().includes(qq);
+  };
+  const passes = (l, skip = {}) =>
+    qMatch(l) &&
+    (skip.izvor || fIzvor === L_SVI_IZVORI || izvorOf(l) === fIzvor) &&
+    (skip.kolega || fKolega === L_SVE_KOLEGE || l.kolega === fKolega) &&
+    periodOk(l, fPeriod);
+
+  // osnova za brojke: svi filteri osim statusa
+  const base = useMemo(() => data.filter((l) => passes(l)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, q, fIzvor, fKolega, fPeriod]);
+  const statusCount = (s) => (s === "Svi" ? base.length : base.filter((l) => l.status === s).length);
+
+  const filtered = useMemo(() => base
+    .filter((l) => fStatus === "Svi" || l.status === fStatus)
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
+  [base, fStatus]);
+
+  const tot = base.length;
+  const konv = base.filter((l) => l.status === "Konvertovan").length;
+  const kup = base.filter(isKupac).length;
+  const otv = base.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
+  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+  const filtriran = q || fIzvor !== L_SVI_IZVORI || fKolega !== L_SVE_KOLEGE || fPeriod !== L_BILO_KADA;
+
+  // po kolegi (ne gleda filter kolege) i po izvoru (ne gleda filter izvora)
+  const poKolegi = useMemo(() => {
+    const m = new Map();
+    data.filter((l) => passes(l, { kolega: true })).forEach((l) => {
+      const k = l.kolega || "—";
+      const e = m.get(k) || { n: 0, kup: 0 };
+      e.n++; if (isKupac(l)) e.kup++;
+      m.set(k, e);
+    });
+    return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, q, fIzvor, fPeriod, kupacIds]);
+  const poIzvoru = useMemo(() => {
+    const m = new Map();
+    data.filter((l) => passes(l, { izvor: true })).forEach((l) => {
+      const k = izvorOf(l);
+      const e = m.get(k) || { n: 0, kup: 0 };
+      e.n++; if (isKupac(l)) e.kup++;
+      m.set(k, e);
+    });
+    return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, q, fKolega, fPeriod, kupacIds]);
+  const maxKol = poKolegi.length ? poKolegi[0][1].n : 1;
 
   const handleSave = async (payload) => {
     if (editing) await onUpdate(editing.id, payload);
@@ -656,29 +763,69 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
     ];
     const rows = filtered.map((l) => [
       l.naziv_firme, l.grad, l.drzava, l.kontakt_osoba, l.telefon, l.email, l.izvor,
-      l.kolega, l.status, l.postao_kupac ? "DA" : "NE", l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
+      l.kolega, l.status, isKupac(l) ? "DA" : "NE", l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
       l.created_by, l.created_at, l.updated_by, l.updated_at,
     ]);
     downloadCSV(`lidovi_${todayStr()}.csv`, headers, rows);
   };
 
+  // grupisanje liste po mjesecu
+  const shown = filtered.slice(0, limit);
+  const grupe = [];
+  for (const l of shown) {
+    const d = leadDatum(l);
+    const key = d ? d.slice(0, 7) : "bez";
+    let g = grupe[grupe.length - 1];
+    if (!g || g.key !== key) {
+      g = { key, label: d ? `${MJESECI[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "Bez datuma", items: [] };
+      grupe.push(g);
+    }
+    g.items.push(l);
+  }
+  const grupaCount = (key) => filtered.filter((l) => (leadDatum(l) ? leadDatum(l).slice(0, 7) : "bez") === key).length;
+
+  const canConvert = (l) => l.status !== "Konvertovan" && l.status !== "Odbačen";
+  const convertBtn = (l) => (
+    <button type="button" disabled={!currentUser} onClick={(e) => { e.stopPropagation(); onConvert(l); }}
+      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-semibold whitespace-nowrap hover:bg-teal-100 dark:hover:bg-teal-900/50 disabled:opacity-50">
+      Konvertuj <ArrowRight size={13} />
+    </button>
+  );
+
+  const prikazBtn = (id, Icon, label) => (
+    <button type="button" aria-label={label} title={label} onClick={() => setPrikaz(id)}
+      className={"w-9 h-8 inline-flex items-center justify-center " + (prikaz === id ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}>
+      <Icon size={15} />
+    </button>
+  );
+
   return (
     <div>
-      <Toolbar>
-        <SearchBox value={q} onChange={setQ} placeholder="Pretraži po firmi, gradu, kontaktu..." />
-        <select className={inputCls + " w-auto"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option>Svi</option>
-          {LEAD_STATUSI.map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <button className={btnSecondary} onClick={() => setShowImport(true)}><Upload size={15} /> Uvezi</button>
-        <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          onClick={exportCSV}
-        >
-          <Download size={15} /> Izvoz CSV
-        </button>
-        <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj lead</button>
-      </Toolbar>
+      {/* ---------- zaglavlje ---------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Lidovi</h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {fmtN(data.length)} lidova · {fmtN(data.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length)} čeka konverziju
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={headerBtnSec} onClick={() => setShowImport(true)}><Upload size={15} /> Uvoz</button>
+          <button type="button" className={headerBtnSec} onClick={exportCSV}><Download size={15} /> Izvoz</button>
+          <button type="button" className={btnPrimary + " h-9"} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Novi lead</button>
+        </div>
+      </div>
+
+      {/* ---------- lijevak ---------- */}
+      <div className="flex flex-wrap items-stretch gap-2 sm:gap-2.5 mb-4">
+        <LidKpi label={filtriran ? "Lidova (filtrirano)" : "Ukupno lidova"} value={tot} sub="svi izvori" cls="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100" />
+        <div className="hidden sm:flex items-center text-slate-300 dark:text-slate-600"><ChevronRight size={20} /></div>
+        <LidKpi label="Konvertovano u potencijal" value={konv} sub={`${pct(konv, tot)}% lidova`} cls="bg-violet-50/70 dark:bg-violet-900/20 border-violet-100 dark:border-violet-900/50 text-violet-700 dark:text-violet-300" />
+        <div className="hidden sm:flex items-center text-slate-300 dark:text-slate-600"><ChevronRight size={20} /></div>
+        <LidKpi label="Postalo kupac" value={kup} sub={`${pct(kup, konv)}% konvertovanih`} cls="bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300" />
+        <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 mx-1" />
+        <LidKpi label="Čeka konverziju" value={otv} sub="još nije potencijal" cls="bg-amber-50/70 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50 text-amber-700 dark:text-amber-300" />
+      </div>
 
       {selected.size > 0 && (
         <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
@@ -721,61 +868,175 @@ export function LidoviTab({ data, currentUser, onAdd, onUpdate, onDelete, onBulk
         </BulkActionBar>
       )}
 
-      {filtered.length === 0 ? (
-        <EmptyState icon={TrendingUp} title="Nema unesenih lidova" subtitle="Dodaj ručno ili uvezi generisanu bazu lidova."
-          action={<button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi lead</button>} />
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map((l) => (
-            <div key={l.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md dark:hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-150">
-              <div className="flex items-start gap-3">
-                <button onClick={() => toggleSelect(l.id)} className={btnGhostIcon + " mt-0.5"}>
-                  {selected.has(l.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} />}
-                </button>
-                <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">{l.naziv_firme}</h4>
-                    {onViewCompany && (
-                      <button onClick={() => onViewCompany(l.naziv_firme)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400" title="360° pregled firme">
-                        <ExternalLink size={12} />
-                      </button>
-                    )}
-                    <span className={"text-xs px-2 py-0.5 rounded-full " + (STATUS_BOJE[l.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>{l.status}</span>
-                    {l.postao_kupac && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium">Postao kupac</span>}
-                    {l.izvor && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{l.izvor}</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                    {(l.grad || l.drzava) && <span className="flex items-center gap-1"><MapPin size={12} /> {[l.grad, l.drzava].filter(Boolean).join(", ")}</span>}
-                    {l.kontakt_osoba && <span className="flex items-center gap-1"><User size={12} /> {l.kontakt_osoba}</span>}
-                    {l.telefon && <span className="flex items-center gap-1"><Phone size={12} /> {l.telefon}</span>}
-                    <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-400"><User size={12} /> {l.kolega}</span>
-                  </div>
-                  {l.napomena && <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{l.napomena}</p>}
-                  {l.podsjetnik_datum && (
-                    <div className="mt-2 inline-flex items-center gap-1.5">
-                      <span className={"text-xs px-2 py-0.5 rounded-full flex items-center gap-1 " + reminderUrgency(l.podsjetnik_datum).cls}>
-                        <Bell size={11} /> {fmtDate(l.podsjetnik_datum)} {l.podsjetnik_opis ? `— ${l.podsjetnik_opis}` : ""}
-                      </span>
+      <div className="xl:flex xl:items-start xl:gap-4">
+        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+          {/* statusi */}
+          <div className="flex items-center gap-4 px-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-4 overflow-x-auto -mb-px">
+              {["Svi", ...LEAD_STATUSI].map((s) => {
+                const on = fStatus === s;
+                return (
+                  <button key={s} type="button" onClick={() => setFStatus(s)}
+                    className={"h-11 inline-flex items-center gap-1.5 border-b-2 text-[13.5px] whitespace-nowrap transition-colors " +
+                      (on ? "border-teal-600 text-teal-700 dark:text-teal-400 font-semibold" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200")}>
+                    {s}
+                    <span className={"text-[11px] px-1.5 rounded-full " + (on ? "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400")}>{statusCount(s)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ml-auto hidden sm:flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
+              {prikazBtn("lista", List, "Prikaz: lista")}
+              {prikazBtn("ploca", LayoutGrid, "Prikaz: ploča po statusu")}
+            </div>
+          </div>
+
+          {/* filteri */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+            <div className="w-full sm:w-72 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, grad..." /></div>
+            <FilterPill label="Izvor" value={fIzvor} defaultValue={L_SVI_IZVORI} onChange={setFIzvor} options={[L_SVI_IZVORI, ...izvori]} />
+            <FilterPill label="Kolega" value={fKolega} defaultValue={L_SVE_KOLEGE} onChange={setFKolega} options={[L_SVE_KOLEGE, ...COLLEAGUE_NAMES]} />
+            <FilterPill label="Period" value={fPeriod} defaultValue={L_BILO_KADA} onChange={setFPeriod} options={L_PERIODI} />
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="px-4 pb-4">
+              <EmptyState icon={TrendingUp} title={data.length === 0 ? "Nema unesenih lidova" : "Nema lidova za odabrane filtere"}
+                subtitle={data.length === 0 ? "Dodaj ručno ili uvezi generisanu bazu lidova." : "Promijeni pretragu ili filtere."}
+                action={data.length === 0 ? <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi lead</button> : null} />
+            </div>
+          ) : prikaz === "ploca" ? (
+            /* ---------- ploča po statusu ---------- */
+            <div className="px-4 pb-4 overflow-x-auto">
+              <div className="grid grid-cols-5 gap-3 min-w-[980px]">
+                {LEAD_STATUSI.map((s) => {
+                  const items = filtered.filter((l) => l.status === s);
+                  return (
+                    <div key={s} className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-2.5 flex flex-col gap-2 min-h-[120px]">
+                      <div className="flex items-center justify-between px-1">
+                        <StatusPill status={s} />
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{items.length}</span>
+                      </div>
+                      {items.slice(0, 60).map((l) => (
+                        <div key={l.id} onClick={() => setEditing(l)}
+                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 cursor-pointer hover:border-teal-300 dark:hover:border-teal-700 hover:shadow-sm transition-all">
+                          <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 leading-snug">{l.naziv_firme}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{[l.kontakt_osoba, l.grad].filter(Boolean).join(" · ") || l.email}</div>
+                          <div className="flex items-center justify-between gap-1.5 mt-2">
+                            <Avatar name={l.kolega} size="sm" />
+                            {isKupac(l) ? <KupacBadge /> : canConvert(l) ? convertBtn(l) : <span className="text-[11px] text-slate-400">{kratkiDatum(leadDatum(l))}</span>}
+                          </div>
+                        </div>
+                      ))}
+                      {items.length > 60 && <div className="text-center text-xs text-slate-400 py-1">+ {items.length - 60} više</div>}
                     </div>
-                  )}
-                  <MetaLine record={l} />
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {l.status !== "Konvertovan" && (
-                    <button className={btnGhostIcon} title="Konvertuj u potencijal" onClick={() => onConvert(l)} disabled={!currentUser}>
-                      <ArrowRightCircle size={16} className="text-teal-600" />
-                    </button>
-                  )}
-                  <button className={btnGhostIcon} onClick={() => setEditing(l)} title="Uredi"><Pencil size={15} /></button>
-                  <ConfirmDelete label={l.naziv_firme} onConfirm={() => onDelete(l.id)} />
-                </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
-          ))}
+          ) : (
+            /* ---------- lista po mjesecima ---------- */
+            <div className="pb-2">
+              {grupe.map((g) => (
+                <div key={g.key}>
+                  <div className="flex items-center gap-2.5 px-4 pt-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {g.label}
+                    <span className="font-semibold text-slate-400 dark:text-slate-500 tracking-normal">{grupaCount(g.key)}</span>
+                    <span className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                  {g.items.map((l) => (
+                    <div key={l.id} onClick={() => setEditing(l)}
+                      className="group grid grid-cols-[28px_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1.2fr)_128px_122px_30px_164px] gap-x-3 gap-y-1 items-center px-4 py-2.5 border-t border-slate-50 dark:border-slate-800/60 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); toggleSelect(l.id); }} className={btnGhostIcon} aria-label="Odaberi lead">
+                        {selected.has(l.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} className="text-slate-300 dark:text-slate-600" />}
+                      </button>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{l.naziv_firme}</span>
+                          {onViewCompany && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onViewCompany(l.naziv_firme); }}
+                              className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400 opacity-0 group-hover:opacity-100 shrink-0" aria-label="360° pregled firme" title="360° pregled firme">
+                              <ExternalLink size={12} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                          {[l.kontakt_osoba, l.grad].filter(Boolean).join(" · ") || l.email || "—"}
+                          {l.izvor ? <span className="text-slate-400 dark:text-slate-500"> · {l.izvor}</span> : null}
+                        </div>
+                        {/* mobitel: status i ishod ispod naziva */}
+                        <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <StatusPill status={l.status} />{isKupac(l) && <KupacBadge />}
+                        </div>
+                      </div>
+                      <div className="hidden md:block text-[12.5px] text-slate-600 dark:text-slate-400 truncate" title={l.napomena || ""}>{l.napomena || ""}</div>
+                      <div className="hidden md:block"><StatusPill status={l.status} /></div>
+                      <div className="hidden md:block">{isKupac(l) && <KupacBadge />}</div>
+                      <div className="hidden md:block"><Avatar name={l.kolega} /></div>
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">{kratkiDatum(leadDatum(l))}</span>
+                        {canConvert(l) && convertBtn(l)}
+                        <span className="inline-flex items-center opacity-40 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                          <ConfirmDelete label={l.naziv_firme} onConfirm={() => onDelete(l.id)} />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {filtered.length > limit && (
+                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-center">
+                  <button type="button" className={btnSecondary} onClick={() => setLimit(limit + 100)}>
+                    Prikaži još ({fmtN(filtered.length - limit)} preostalo)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ---------- desna kolona ---------- */}
+        <div className="hidden xl:flex flex-col gap-4 w-[300px] shrink-0">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={fKolega !== L_SVE_KOLEGE && <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFKolega(L_SVE_KOLEGE)}>Svi</button>}>Po kolegi</PanelLabel>
+            <div className="flex flex-col gap-2.5 mt-1">
+              {poKolegi.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
+              {poKolegi.map(([k, v]) => (
+                <button key={k} type="button" onClick={() => setFKolega(fKolega === k ? L_SVE_KOLEGE : k)}
+                  className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1 " + (fKolega === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                  <Avatar name={k} size="sm" />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex justify-between gap-2 text-[12.5px] text-slate-700 dark:text-slate-300">
+                      <span className="truncate">{k}</span>
+                      <span className="whitespace-nowrap"><b className="text-slate-900 dark:text-slate-100">{v.n}</b>{v.kup > 0 && <span className="text-emerald-700 dark:text-emerald-400"> · {v.kup} kup.</span>}</span>
+                    </span>
+                    <span className="block h-1.5 mt-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                      <span className="block h-full rounded-full bg-teal-500" style={{ width: `${Math.round((v.n / maxKol) * 100)}%` }} />
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={fIzvor !== L_SVI_IZVORI && <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFIzvor(L_SVI_IZVORI)}>Svi</button>}>Po izvoru</PanelLabel>
+            <div className="flex flex-col gap-1 mt-1">
+              {poIzvoru.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
+              {poIzvoru.map(([k, v]) => (
+                <button key={k} type="button" onClick={() => setFIzvor(fIzvor === k ? L_SVI_IZVORI : k)}
+                  className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1.5 " + (fIzvor === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                  <span className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 inline-flex items-center justify-center shrink-0"><Newspaper size={15} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">{k}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{v.n} {v.n === 1 ? "lead" : "lidova"} · {v.kup} {v.kup === 1 ? "kupac" : "kupaca"}</span>
+                  </span>
+                  <b className="text-sm text-slate-900 dark:text-slate-100" title="Udio lidova koji su postali kupac">{pct(v.kup, v.n)}%</b>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {(showNew || editing) && (
         <LeadForm initial={editing} currentUser={currentUser} existingList={data} onSave={handleSave}
