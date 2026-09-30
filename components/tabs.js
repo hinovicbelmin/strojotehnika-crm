@@ -6,6 +6,7 @@ import {
   CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink, Square, CheckSquare,
   ArrowRight, Trophy, Newspaper, List, LayoutGrid,
   RefreshCw, MoreHorizontal, Clock, KeyRound, GraduationCap, MessageSquare, Bug,
+  AlarmClock, History, Sun, Check, FileText,
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
@@ -16,7 +17,7 @@ import {
   COLLEAGUES, companyKey,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
-import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, fmtN, headerBtnSec } from "./crmBits";
+import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, relDate, fmtN, headerBtnSec } from "./crmBits";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
@@ -2422,53 +2423,618 @@ export function PodrskaTab({ data, kupci, currentUser, onAdd, onUpdate, onDelete
 /*  PODSJETNICI                                                             */
 /* ====================================================================== */
 
-export function PodsjetniciTab({ potencijali, lidovi, onClear }) {
+const OTVORENI_STATUSI = ["Novi kontakt", "U pregovorima", "Ponuda poslana", "Na čekanju"];
+const DANI_KRATKO = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
+const PRIJEDLOZI_OPISA = ["Poziv", "Follow-up ponude", "Poslati ponudu", "Sastanak", "Demo / prezentacija", "Poslati mail"];
+
+// lokalni datum (ne UTC), da podsjetnik ne "preskoči" dan oko ponoći
+function isoLokalno(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function danasIso() { return isoLokalno(new Date()); }
+function plusDana(n) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return isoLokalno(d); }
+function sljedeciPonedjeljak() { const d = new Date(); const wd = d.getDay(); return plusDana(wd === 1 ? 7 : (8 - wd) % 7 || 7); }
+const BRZI_DATUMI = [
+  { label: "Sutra", fn: () => plusDana(1) },
+  { label: "Za 3 dana", fn: () => plusDana(3) },
+  { label: "Sljedeći ponedjeljak", fn: sljedeciPonedjeljak },
+  { label: "Za 1 sedmicu", fn: () => plusDana(7) },
+  { label: "Za 1 mjesec", fn: () => plusDana(30) },
+];
+
+function vlasnikPotencijala(p) {
+  if (p.kolega && p.kolega !== "Nedodijeljeno") return p.kolega;
+  return (p.prodavaci || []).find((x) => x && x !== "Nedodijeljeno") || "Nedodijeljeno";
+}
+function zadnjiKontakt(p) {
+  let m = p.zadnji_kontakt ? String(p.zadnji_kontakt).slice(0, 10) : null;
+  for (const h of p.historija || []) if (h.datum && (!m || h.datum > m)) m = h.datum;
+  return m;
+}
+function vrstaPodsjetnika(opis) {
+  const o = String(opis || "").toLowerCase();
+  if (/(demo|prezent|webinar)/.test(o)) return { icon: LayoutGrid, label: "Demo / prezentacija" };
+  if (/(sastan|posjet|obilaz)/.test(o)) return { icon: User, label: "Sastanak" };
+  if (/(ponud|obnov|ugovor)/.test(o)) return { icon: FileText, label: "Ponuda / obnova" };
+  if (/(mail|poslati info)/.test(o)) return { icon: Mail, label: "Mail" };
+  return { icon: Phone, label: "Poziv" };
+}
+function sekcijaPodsjetnika(datum) {
+  const n = daysDiff(datum);
+  if (n < 0) return "kasni";
+  if (n === 0) return "danas";
+  if (n === 1) return "sutra";
+  const wd = new Date().getDay(); // 0 = nedjelja
+  const doNedjelje = wd === 0 ? 0 : 7 - wd;
+  if (n <= doNedjelje) return "sedmica";
+  if (n <= doNedjelje + 7) return "sljedeca";
+  return "kasnije";
+}
+const P_SEKCIJE = ["kasni", "danas", "sutra", "sedmica", "sljedeca", "kasnije"];
+function sekcijaNaslov(key) {
+  const d = new Date();
+  const s = new Date(); s.setDate(d.getDate() + 1);
+  if (key === "kasni") return "Kasni";
+  if (key === "danas") return `Danas · ${DANI[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+  if (key === "sutra") return `Sutra · ${DANI[s.getDay()]} ${s.getDate()}.${s.getMonth() + 1}.`;
+  if (key === "sedmica") return "Ostatak ove sedmice";
+  if (key === "sljedeca") return "Sljedeća sedmica";
+  return "Kasnije";
+}
+function kadaTekst(datum) {
+  const n = daysDiff(datum);
+  if (n < 0) return `kasni ${-n} ${-n === 1 ? "dan" : "dana"}`;
+  if (n === 0) return "danas";
+  if (n === 1) return "sutra";
+  return n <= 45 ? `za ${n} dana` : `za ${Math.round(n / 30.4)} mj.`;
+}
+const prviTelefon = (t) => String(t || "").split(/[,;/]| i /)[0].trim();
+
+// ---------- dugme "Odgodi" s brzim izborom datuma ----------
+function OdgodiMenu({ disabled, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [datum, setDatum] = useState("");
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50">
+        <AlarmClock size={14} className="text-slate-500" /> Odgodi <ChevronDown size={12} className="opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1.5 z-30 w-56 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-1.5">
+          {BRZI_DATUMI.map((b) => (
+            <button key={b.label} type="button" onClick={() => { setOpen(false); onPick(b.fn()); }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+              <span>{b.label}</span><span className="text-xs text-slate-400">{fmtDate(b.fn())}</span>
+            </button>
+          ))}
+          <div className="flex items-center gap-1.5 px-2 pt-2 mt-1 border-t border-slate-100 dark:border-slate-800">
+            <input type="date" aria-label="Odgodi na datum" value={datum} min={plusDana(1)} onChange={(e) => setDatum(e.target.value)}
+              className="flex-1 min-w-0 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs text-slate-700 dark:text-slate-200" />
+            <button type="button" disabled={!datum} onClick={() => { setOpen(false); onPick(datum); setDatum(""); }}
+              className="h-8 px-2.5 rounded-lg bg-teal-600 text-white text-xs font-semibold disabled:opacity-40">OK</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- "Obavljeno": zapis u historiju + sljedeći podsjetnik ----------
+function ZavrsiPanel({ item, currentUser, onCancel, onDone }) {
+  const [biljeska, setBiljeska] = useState("");
+  const [izbor, setIzbor] = useState("Bez novog");
+  const [datum, setDatum] = useState("");
+  const [opis, setOpis] = useState(item.opis || "");
+  const [busy, setBusy] = useState(false);
+  const sljedeci = izbor === "Bez novog" ? null : izbor === "Datum" ? datum || null : (BRZI_DATUMI.find((b) => b.label === izbor) || BRZI_DATUMI[0]).fn();
+  const chip = (label, on) => (
+    <button key={label} type="button" onClick={() => setIzbor(label)}
+      className={"h-7 px-2.5 rounded-full border text-[12.5px] whitespace-nowrap transition-colors " +
+        (on ? "bg-teal-600 border-teal-600 text-white font-semibold" : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400")}>
+      {label}
+    </button>
+  );
+  const spremi = async () => {
+    if (busy || !currentUser) return;
+    setBusy(true);
+    try {
+      await onDone({ biljeska: biljeska.trim(), sljedeci, opis: opis.trim() || item.opis || "" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-green-200 dark:border-green-900/60 rounded-xl p-3.5 flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-[11.5px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
+        <History size={14} /> {item.tip === "Potencijal" ? "Zapiši u historiju firme" : "Zapiši u napomenu leada"}
+      </div>
+      <textarea className={inputCls} rows={2} value={biljeska} onChange={(e) => setBiljeska(e.target.value)} autoFocus
+        placeholder="Šta je dogovoreno? (nije obavezno)" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[12.5px] font-semibold text-slate-600 dark:text-slate-400 mr-1">Sljedeći podsjetnik:</span>
+        {["Bez novog", "Sutra", "Za 3 dana", "Za 1 sedmicu", "Za 1 mjesec"].map((l) => chip(l, izbor === l))}
+        <span className="inline-flex items-center gap-1">
+          {chip("Datum", izbor === "Datum")}
+          {izbor === "Datum" && (
+            <input type="date" aria-label="Datum sljedećeg podsjetnika" value={datum} min={plusDana(1)} onChange={(e) => setDatum(e.target.value)}
+              className="h-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs text-slate-700 dark:text-slate-200" />
+          )}
+        </span>
+      </div>
+      {izbor !== "Bez novog" && (
+        <input className={inputCls} value={opis} onChange={(e) => setOpis(e.target.value)} aria-label="Opis sljedećeg podsjetnika" placeholder="Opis sljedećeg podsjetnika (npr. Poslati ponudu)" />
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} className="h-8 px-3 text-[13px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">Odustani</button>
+        <button type="button" className={btnPrimary + " h-8 text-[13px]"} disabled={busy || !currentUser || (izbor === "Datum" && !datum)} onClick={spremi}>
+          <Check size={14} /> {busy ? "Čuvam..." : sljedeci ? `Spremi · novi ${fmtDate(sljedeci)}` : "Spremi i zatvori"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- novi podsjetnik (bilo koja firma iz Baze potencijala ili Lidova) ----------
+function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) {
+  const [q, setQ] = useState("");
+  const [odabran, setOdabran] = useState(pocetni || null);
+  const [datum, setDatum] = useState(plusDana(1));
+  const [opis, setOpis] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pogodci = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return [];
+    return zapisi.filter((z) => [z.naziv, z.kontakt].join(" ").toLowerCase().includes(qq))
+      .sort((a, b) => (a.naziv.toLowerCase().startsWith(qq) ? 0 : 1) - (b.naziv.toLowerCase().startsWith(qq) ? 0 : 1))
+      .slice(0, 8);
+  }, [q, zapisi]);
+  const spremi = async () => {
+    if (!odabran || !datum || !currentUser) return;
+    setBusy(true);
+    try {
+      await onSave(odabran, datum, opis.trim());
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="Novi podsjetnik" onClose={onClose}>
+      <Field label="Firma" required hint="Potencijal iz Baze potencijala ili lead">
+        {odabran ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/60 dark:bg-teal-900/20 px-3 py-2">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{odabran.naziv}</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">{odabran.tip} · {odabran.status || "—"} · {odabran.vlasnik}</span>
+            </span>
+            <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline shrink-0" onClick={() => setOdabran(null)}>Promijeni</button>
+          </div>
+        ) : (
+          <div>
+            <input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Upiši naziv firme ili kontakt..." autoFocus />
+            {pogodci.length > 0 && (
+              <div className="mt-1.5 rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+                {pogodci.map((z) => (
+                  <button key={z.key} type="button" onClick={() => setOdabran(z)} className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <span className="block text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{z.naziv}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{z.tip} · {z.status || "—"} · {z.vlasnik}{z.kontakt ? ` · ${z.kontakt}` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {q.trim() && pogodci.length === 0 && <p className="text-xs text-slate-400 mt-1.5">Nema firme s tim nazivom.</p>}
+          </div>
+        )}
+      </Field>
+      {odabran && odabran.rec.podsjetnik_datum && (
+        <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span>Ova firma već ima podsjetnik ({fmtDate(odabran.rec.podsjetnik_datum)}{odabran.rec.podsjetnik_opis ? ` — ${odabran.rec.podsjetnik_opis}` : ""}). Novi će ga zamijeniti.</span>
+        </div>
+      )}
+      <Field label="Datum" required>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <input type="date" className={inputCls + " w-auto"} value={datum} onChange={(e) => setDatum(e.target.value)} />
+          {BRZI_DATUMI.map((b) => (
+            <button key={b.label} type="button" onClick={() => setDatum(b.fn())}
+              className={"h-7 px-2.5 rounded-full border text-xs " + (datum === b.fn() ? "bg-teal-600 border-teal-600 text-white font-semibold" : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-400")}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Opis" hint="npr. poziv, sastanak, poslati ponudu">
+        <input className={inputCls} list="podsjetnik-opisi" value={opis} onChange={(e) => setOpis(e.target.value)} placeholder="Šta treba uraditi?" />
+        <datalist id="podsjetnik-opisi">{PRIJEDLOZI_OPISA.map((o) => <option key={o} value={o} />)}</datalist>
+      </Field>
+      <div className="flex justify-end gap-2 mt-2">
+        <button className={btnSecondary} onClick={onClose}>Otkaži</button>
+        <button className={btnPrimary} onClick={spremi} disabled={!odabran || !datum || !currentUser || busy}>{busy ? "Čuvam..." : "Sačuvaj podsjetnik"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onClear, onPatch, onViewCompany }) {
+  const [mod, setMod] = useState(currentUser ? "moji" : "tim");
   const [fKolega, setFKolega] = useState("Svi");
-  const allItems = getReminders(potencijali, lidovi);
-  const items = fKolega === "Svi" ? allItems : allItems.filter((r) => r.kolega === fKolega);
+  const [fTip, setFTip] = useState("Svi");
+  const [fStatus, setFStatus] = useState("Svi");
+  const [fRok, setFRok] = useState("Sve");
+  const [fDan, setFDan] = useState(null);
+  const [q, setQ] = useState("");
+  const [zavrsava, setZavrsava] = useState(null);
+  const [busyKey, setBusyKey] = useState(null);
+  const [showNovi, setShowNovi] = useState(false);
+  const [noviPocetni, setNoviPocetni] = useState(null);
+  const [mjesec, setMjesec] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [bezLimit, setBezLimit] = useState(5);
+
+  useEffect(() => { if (!currentUser) setMod("tim"); }, [currentUser]);
+
+  // svi zapisi (za novi podsjetnik) i aktivni podsjetnici
+  const zapisi = useMemo(() => [
+    ...potencijali.map((p) => ({
+      key: "P" + p.id, tip: "Potencijal", rec: p, naziv: p.naziv_firme || "—", status: p.status, vlasnik: vlasnikPotencijala(p),
+      kontakt: p.kontakt_osoba || "", telefon: p.telefon || "", email: p.email || "",
+    })),
+    ...lidovi.filter((l) => l.status !== "Konvertovan" || l.podsjetnik_datum).map((l) => ({
+      key: "L" + l.id, tip: "Lead", rec: l, naziv: l.naziv_firme || "—", status: l.status, vlasnik: l.kolega || "Nedodijeljeno",
+      kontakt: l.kontakt_osoba || "", telefon: l.telefon || "", email: l.email || "",
+    })),
+  ], [potencijali, lidovi]);
+  const svi = useMemo(() => zapisi
+    .filter((z) => z.rec.podsjetnik_datum)
+    .map((z) => ({ ...z, datum: String(z.rec.podsjetnik_datum).slice(0, 10), opis: z.rec.podsjetnik_opis || "" }))
+    .sort((a, b) => a.datum.localeCompare(b.datum) || a.naziv.localeCompare(b.naziv, "hr")), [zapisi]);
+
+  const statusi = useMemo(() => [...new Set(svi.map((r) => r.status).filter(Boolean))], [svi]);
+  const qq = q.trim().toLowerCase();
+  const scope = (r) =>
+    (mod === "moji" ? r.vlasnik === currentUser : fKolega === "Svi" || r.vlasnik === fKolega) &&
+    (fTip === "Svi" || r.tip === fTip) &&
+    (fStatus === "Svi" || r.status === fStatus) &&
+    (!qq || [r.naziv, r.kontakt, r.opis, r.telefon, r.email].join(" ").toLowerCase().includes(qq));
+  const base = useMemo(() => svi.filter(scope),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [svi, mod, fKolega, fTip, fStatus, qq, currentUser]);
+  const rokOk = (r) => {
+    if (fRok === "Sve") return true;
+    const s = sekcijaPodsjetnika(r.datum);
+    if (fRok === "Kasni") return s === "kasni";
+    if (fRok === "Danas") return s === "danas";
+    if (fRok === "Do kraja sedmice") return s === "sutra" || s === "sedmica";
+    return s === "sljedeca" || s === "kasnije";
+  };
+  const lista = base.filter((r) => rokOk(r) && (!fDan || r.datum === fDan));
+
+  const broj = (keys) => base.filter((r) => keys.includes(sekcijaPodsjetnika(r.datum))).length;
+  const nKasni = broj(["kasni"]), nDanas = broj(["danas"]), nSedm = broj(["sutra", "sedmica"]), nKasnije = broj(["sljedeca", "kasnije"]);
+  const najstariji = base.find((r) => daysDiff(r.datum) < 0);
+
+  // tim: aktivni podsjetnici po kolegi
+  const tim = useMemo(() => {
+    const m = new Map();
+    for (const r of svi) {
+      const e = m.get(r.vlasnik) || { n: 0, kasni: 0 };
+      e.n++; if (daysDiff(r.datum) < 0) e.kasni++;
+      m.set(r.vlasnik, e);
+    }
+    const imena = [...new Set([...COLLEAGUE_NAMES.filter((n) => getColleagueDept(n) === "Prodaja"), ...m.keys()])];
+    return imena.map((n) => [n, m.get(n) || { n: 0, kasni: 0 }]).sort((a, b) => b[1].n - a[1].n);
+  }, [svi]);
+
+  // firme u pregovorima bez podsjetnika i bez kontakta > 90 dana
+  const bezKoraka = useMemo(() => {
+    const ko = mod === "moji" ? currentUser : fKolega !== "Svi" ? fKolega : null;
+    return potencijali
+      .filter((p) => OTVORENI_STATUSI.includes(p.status) && !p.podsjetnik_datum)
+      .filter((p) => !ko || vlasnikPotencijala(p) === ko || (p.prodavaci || []).includes(ko))
+      .map((p) => ({ p, zk: zadnjiKontakt(p) }))
+      .filter((x) => !x.zk || daysAgo(x.zk) > 90)
+      .sort((a, b) => (a.zk || "9999").localeCompare(b.zk || "9999"));
+  }, [potencijali, mod, fKolega, currentUser]);
+  useEffect(() => { setBezLimit(5); }, [mod, fKolega]);
+
+  // kalendar
+  const kalDani = useMemo(() => {
+    const m = new Map();
+    for (const r of base) { const e = m.get(r.datum) || { n: 0, kasni: false }; e.n++; if (daysDiff(r.datum) < 0) e.kasni = true; m.set(r.datum, e); }
+    return m;
+  }, [base]);
+  const prviDan = new Date(mjesec.y, mjesec.m, 1);
+  const pomak = (prviDan.getDay() + 6) % 7; // ponedjeljak prvi
+  const danaUMj = new Date(mjesec.y, mjesec.m + 1, 0).getDate();
+  const pomjeriMj = (d) => setMjesec(({ y, m }) => { const x = new Date(y, m + d, 1); return { y: x.getFullYear(), m: x.getMonth() }; });
+  const danas = danasIso();
+
+  // ---------- akcije ----------
+  const odgodi = async (r, novi) => {
+    setBusyKey(r.key);
+    try { await onPatch(r.tip, r.rec.id, { podsjetnik_datum: novi }, `Podsjetnik pomjeren na ${fmtDate(novi)}`); }
+    finally { setBusyKey(null); }
+  };
+  const zavrsi = async (r, { biljeska, sljedeci, opis }) => {
+    const patch = { podsjetnik_datum: sljedeci || null, podsjetnik_opis: sljedeci ? opis : "" };
+    if (biljeska) {
+      if (r.tip === "Potencijal") {
+        const zapis = { datum: danasIso(), kolega: currentUser, kontakt: r.kontakt || "", opis: r.opis ? `${r.opis}: ${biljeska}` : biljeska };
+        const nova = [zapis, ...(r.rec.historija || [])];
+        patch.historija = nova;
+        patch.zadnji_kontakt = nova.reduce((m, h) => (h.datum && (!m || h.datum > m) ? h.datum : m), null);
+      } else {
+        const d = new Date();
+        const red = `[${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}. ${currentUser}] ${r.opis ? r.opis + ": " : ""}${biljeska}`;
+        patch.napomena = r.rec.napomena ? `${r.rec.napomena}\n${red}` : red;
+      }
+    }
+    await onPatch(r.tip, r.rec.id, patch, sljedeci ? `Obavljeno · novi podsjetnik ${fmtDate(sljedeci)}` : "Podsjetnik obavljen");
+    setZavrsava(null);
+  };
+  const noviPodsjetnik = async (z, datum, opis) => {
+    await onPatch(z.tip, z.rec.id, { podsjetnik_datum: datum, podsjetnik_opis: opis }, `Podsjetnik za ${fmtDate(datum)} sačuvan`);
+  };
+  const otvoriNovi = (z = null) => { setNoviPocetni(z); setShowNovi(true); };
+
+  // ---------- grupe ----------
+  const grupe = P_SEKCIJE.map((k) => ({ key: k, items: lista.filter((r) => sekcijaPodsjetnika(r.datum) === k) })).filter((g) => g.items.length);
+  const tipChip = (tip) => (
+    <span className={"text-[11px] font-semibold px-1.5 py-px rounded-md " + (tip === "Lead" ? "bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{tip}</span>
+  );
+  const filtriran = fTip !== "Svi" || fStatus !== "Svi" || fRok !== "Sve" || fDan || qq || (mod === "tim" && fKolega !== "Svi");
+  const ocisti = () => { setFTip("Svi"); setFStatus("Svi"); setFRok("Sve"); setFDan(null); setQ(""); setFKolega("Svi"); };
+  const toggleRok = (r) => { setFRok(fRok === r ? "Sve" : r); setFDan(null); };
+
+  const modBtn = (id, label, count, icon) => (
+    <button type="button" onClick={() => { setMod(id); if (id === "moji") setFKolega("Svi"); }} disabled={id === "moji" && !currentUser}
+      className={"h-9 px-3 inline-flex items-center gap-1.5 text-[13px] disabled:opacity-40 " +
+        (mod === id ? "bg-teal-600 text-white font-semibold" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white")}>
+      {icon} {label}
+      <span className={"text-[11px] px-1.5 rounded-full " + (mod === id ? "bg-white/25" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}>{count}</span>
+    </button>
+  );
+  const nMojih = svi.filter((r) => r.vlasnik === currentUser).length;
 
   return (
     <div>
-      <Toolbar>
-        <select className={inputCls + " w-auto"} value={fKolega} onChange={(e) => setFKolega(e.target.value)}>
-          <option>Svi</option>
-          {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
-        </select>
-        {fKolega !== "Svi" && (
-          <span className="text-sm text-slate-500 dark:text-slate-400">
-            {items.length} {items.length === 1 ? "podsjetnik" : "podsjetnika"} za <span className="font-medium text-slate-700 dark:text-slate-300">{fKolega}</span>
-          </span>
-        )}
-      </Toolbar>
-
-      {items.length === 0 ? (
-        <EmptyState
-          icon={Bell}
-          title={fKolega === "Svi" ? "Nema aktivnih podsjetnika" : `Nema podsjetnika za ${fKolega}`}
-          subtitle="Podsjetnike dodaješ direktno na potencijalu ili leadu (poziv, sastanak, follow-up)."
-        />
-      ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
-          {items.map((r) => {
-            const u = reminderUrgency(r.datum);
-            return (
-              <div key={r.tip + r.id} className="p-4 flex items-center gap-3">
-                <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + u.dotCls} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-800 dark:text-slate-200">
-                    <span className="font-semibold">{r.firma}</span>{" "}
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ml-1">{r.tip}</span>
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.opis || "Podsjetnik"} · zadužen: {r.kolega} · {fmtDate(r.datum)}</p>
-                </div>
-                <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + u.cls}>{u.label}</span>
-                <button className={btnGhostIcon} title="Označi kao obavljeno" onClick={() => onClear(r)}>
-                  <CheckCircle2 size={17} className="text-green-600" />
-                </button>
-              </div>
-            );
-          })}
+      {/* ---------- zaglavlje ---------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Podsjetnici</h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {mod === "moji" ? `${base.length} tvojih aktivnih` : `${base.length} aktivnih${fKolega !== "Svi" ? ` · ${fKolega}` : " u timu"}`} · {nKasni} kasni · {nDanas} danas
+          </p>
         </div>
+        <button type="button" className={btnPrimary + " h-9"} onClick={() => otvoriNovi()} disabled={!currentUser}><Plus size={15} /> Novi podsjetnik</button>
+      </div>
+
+      {/* ---------- pločice ---------- */}
+      <div className="flex flex-wrap gap-2.5 mb-4">
+        <KpiTile icon={AlertTriangle} tone="red" label="Kasni" value={nKasni} active={fRok === "Kasni"} onClick={() => toggleRok("Kasni")}
+          sub={najstariji ? `najstariji ${kadaTekst(najstariji.datum)}` : "sve je na vrijeme"} />
+        <KpiTile icon={Sun} tone="amber" label="Danas" value={nDanas} active={fRok === "Danas"} onClick={() => toggleRok("Danas")}
+          sub={nDanas ? `${nDanas} ${plural(nDanas, "zadatak", "zadatka", "zadataka")} za danas` : "ništa za danas"} />
+        <KpiTile icon={Calendar} tone="blue" label="Do kraja sedmice" value={nSedm} active={fRok === "Do kraja sedmice"} onClick={() => toggleRok("Do kraja sedmice")}
+          sub="od sutra do nedjelje" />
+        <KpiTile icon={Clock} label="Kasnije" value={nKasnije} active={fRok === "Kasnije"} onClick={() => toggleRok("Kasnije")}
+          sub="sljedeća sedmica i dalje" />
+      </div>
+
+      <div className="xl:flex xl:items-start xl:gap-4">
+        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+          {/* filteri */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
+              {modBtn("moji", "Moji", nMojih, currentUser ? <Avatar name={currentUser} size="sm" /> : null)}
+              <span className="w-px bg-slate-200 dark:bg-slate-700" />
+              {modBtn("tim", "Cijeli tim", svi.length, <User size={14} />)}
+            </div>
+            <div className="w-full sm:w-56 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, opis..." /></div>
+            {mod === "tim" && <FilterPill label="Kolega" value={fKolega} defaultValue="Svi" onChange={setFKolega} options={["Svi", ...tim.map(([n]) => n)]} />}
+            <FilterPill label="Tip" value={fTip} defaultValue="Svi" onChange={setFTip} options={["Svi", "Potencijal", "Lead"]} />
+            <FilterPill label="Status" value={fStatus} defaultValue="Svi" onChange={setFStatus} options={["Svi", ...statusi]} />
+            {fDan && (
+              <span className="inline-flex items-center h-9 rounded-lg border border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-700 dark:bg-teal-900/30 dark:text-teal-200 text-[13px] pl-3">
+                <span className="opacity-75 mr-1.5">Dan:</span><b className="font-semibold">{fmtDate(fDan)}</b>
+                <button type="button" aria-label="Ukloni filter dana" onClick={() => setFDan(null)} className="h-full px-2"><X size={13} /></button>
+              </span>
+            )}
+            {filtriran && <button type="button" onClick={ocisti} className="text-xs text-teal-700 dark:text-teal-400 hover:underline ml-1">Očisti filtere</button>}
+          </div>
+
+          {lista.length === 0 ? (
+            <div className="p-4">
+              <EmptyState icon={Bell}
+                title={svi.length === 0 ? "Nema aktivnih podsjetnika" : base.length === 0 && mod === "moji" ? "Nemaš aktivnih podsjetnika" : "Nema podsjetnika za odabrane filtere"}
+                subtitle={svi.length === 0 ? "Podsjetnik dodaješ ovdje ili direktno na potencijalu ili leadu (poziv, sastanak, follow-up)." : mod === "moji" && base.length === 0 ? "Pogledaj podsjetnike cijelog tima ili dodaj novi." : "Promijeni pretragu ili filtere."}
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {mod === "moji" && base.length === 0 && svi.length > 0 && <button className={btnSecondary} onClick={() => setMod("tim")}>Prikaži cijeli tim</button>}
+                    {currentUser && <button className={btnPrimary} onClick={() => otvoriNovi()}><Plus size={15} /> Novi podsjetnik</button>}
+                  </div>
+                } />
+            </div>
+          ) : (
+            <div className="pb-2">
+              {grupe.map((g) => (
+                <div key={g.key}>
+                  <div className={"flex items-center gap-2.5 px-4 pt-3.5 pb-1.5 text-[11px] font-bold uppercase tracking-wider " +
+                    (g.key === "kasni" ? "text-red-700 dark:text-red-400" : g.key === "danas" ? "text-amber-800 dark:text-amber-400" : "text-slate-500 dark:text-slate-400")}>
+                    {sekcijaNaslov(g.key)}
+                    <span className="font-semibold text-slate-400 dark:text-slate-500 tracking-normal">{g.items.length}</span>
+                    <span className={"flex-1 h-px " + (g.key === "kasni" ? "bg-red-100 dark:bg-red-900/50" : "bg-slate-100 dark:bg-slate-800")} />
+                  </div>
+                  {g.items.map((r) => {
+                    const n = daysDiff(r.datum);
+                    const dt = new Date(r.datum + "T00:00:00");
+                    const V = vrstaPodsjetnika(r.opis);
+                    const kutija = n < 0 ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                      : n === 0 ? "bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                      : "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
+                    const kadaCls = n < 0 ? "text-red-700 dark:text-red-400" : n === 0 ? "text-amber-800 dark:text-amber-400" : "text-slate-600 dark:text-slate-400";
+                    const otvoren = zavrsava === r.key;
+                    const tel = prviTelefon(r.telefon);
+                    return (
+                      <div key={r.key} className={"border-t border-slate-50 dark:border-slate-800/60 " + (otvoren ? "bg-green-50/60 dark:bg-green-900/10" : "")}>
+                        <div className="group grid grid-cols-[48px_minmax(0,1fr)] md:grid-cols-[52px_34px_minmax(0,1fr)_100px_30px_auto] gap-x-3.5 gap-y-2 items-center px-4 py-2.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
+                          <div className={"w-12 md:w-[52px] h-12 md:h-[52px] rounded-xl flex flex-col items-center justify-center leading-none " + kutija}>
+                            <span className="text-lg md:text-xl font-bold">{dt.getDate()}</span>
+                            <span className="text-[10.5px] font-semibold opacity-75 mt-1">{DANI_KRATKO[dt.getDay()]} · {dt.getMonth() + 1}.</span>
+                          </div>
+                          <span title={V.label} className="hidden md:inline-flex w-[34px] h-[34px] rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 items-center justify-center"><V.icon size={16} /></span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[420px]">{r.naziv}</span>
+                              {onViewCompany && (
+                                <button type="button" onClick={() => onViewCompany(r.naziv)} className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400 opacity-0 group-hover:opacity-100" title="360° pregled firme" aria-label="360° pregled firme">
+                                  <ExternalLink size={12} />
+                                </button>
+                              )}
+                              {tipChip(r.tip)}
+                              {r.status && <StatusPill status={r.status} />}
+                            </div>
+                            <div className="text-[13.5px] text-slate-700 dark:text-slate-300 mt-0.5">{r.opis || <span className="text-slate-400">Podsjetnik</span>}</div>
+                            {(r.kontakt || tel || r.email) && (
+                              <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 mt-1 text-[12.5px]">
+                                {r.kontakt && <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400"><User size={13} className="text-slate-400" />{r.kontakt}</span>}
+                                {tel && <a href={`tel:${tel.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 font-medium text-teal-700 dark:text-teal-400 hover:underline"><Phone size={13} />{r.telefon}</a>}
+                                {r.email && <a href={`mailto:${String(r.email).split(/[,;\s]+/)[0]}`} className="inline-flex items-center gap-1.5 text-teal-700 dark:text-teal-400 hover:underline" title={r.email} aria-label={`Pošalji mail ${r.kontakt || ""}`}><Mail size={13} /><span className="hidden lg:inline max-w-[200px] truncate">{String(r.email).split(/[,;\s]+/)[0]}</span></a>}
+                              </div>
+                            )}
+                            <div className={"md:hidden text-xs font-semibold mt-1 " + kadaCls}>{kadaTekst(r.datum)} · {r.vlasnik}</div>
+                          </div>
+                          <div className={"hidden md:block text-[13px] font-semibold whitespace-nowrap " + kadaCls}>{kadaTekst(r.datum)}</div>
+                          <div className="hidden md:block"><Avatar name={r.vlasnik} size="sm" /></div>
+                          <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-1.5">
+                            {otvoren ? (
+                              <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-[13px] font-semibold"><Check size={14} /> Obavljeno</span>
+                            ) : (
+                              <>
+                                <OdgodiMenu disabled={!currentUser || busyKey === r.key} onPick={(d) => odgodi(r, d)} />
+                                <button type="button" disabled={!currentUser || busyKey === r.key} onClick={() => setZavrsava(r.key)}
+                                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-[12.5px] font-semibold hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50">
+                                  <Check size={14} /> Obavljeno
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {otvoren && (
+                          <div className="px-4 pb-3.5 md:pl-[118px]">
+                            <ZavrsiPanel item={r} currentUser={currentUser} onCancel={() => setZavrsava(null)} onDone={(x) => zavrsi(r, x)} />
+                            <div className="text-right mt-1.5">
+                              <button type="button" className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:underline"
+                                onClick={async () => { await onClear({ id: r.rec.id, tip: r.tip, kolega: r.vlasnik }); setZavrsava(null); }}>
+                                Samo zatvori podsjetnik, bez zapisa
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ---------- desna kolona ---------- */}
+        <div className="hidden xl:flex flex-col gap-4 w-[320px] shrink-0">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={
+              <span className="flex gap-0.5">
+                <button type="button" className={btnGhostIcon} aria-label="Prethodni mjesec" onClick={() => pomjeriMj(-1)}><ChevronLeft size={15} /></button>
+                <button type="button" className={btnGhostIcon} aria-label="Sljedeći mjesec" onClick={() => pomjeriMj(1)}><ChevronRight size={15} /></button>
+              </span>
+            }>{MJESECI[mjesec.m]} {mjesec.y}</PanelLabel>
+            <div className="grid grid-cols-7 gap-0.5 mt-1">
+              {["po", "ut", "sr", "če", "pe", "su", "ne"].map((d) => <span key={d} className="text-center text-[10.5px] font-bold uppercase text-slate-400">{d}</span>)}
+              {Array.from({ length: pomak }).map((_, i) => <span key={"p" + i} />)}
+              {Array.from({ length: danaUMj }).map((_, i) => {
+                const iso = `${mjesec.y}-${String(mjesec.m + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
+                const info = kalDani.get(iso);
+                const vikend = (pomak + i) % 7 >= 5;
+                const on = fDan === iso;
+                return (
+                  <button key={iso} type="button" disabled={!info} onClick={() => { setFDan(on ? null : iso); setFRok("Sve"); }}
+                    title={info ? `${info.n} ${plural(info.n, "podsjetnik", "podsjetnika", "podsjetnika")}` : undefined}
+                    className={"h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 text-[12.5px] transition-colors " +
+                      (on ? "bg-teal-600 text-white font-bold" : info ? "bg-teal-50 dark:bg-teal-900/30 text-slate-900 dark:text-slate-100 font-bold hover:bg-teal-100 dark:hover:bg-teal-900/50" : vikend ? "text-slate-300 dark:text-slate-600" : "text-slate-500 dark:text-slate-400") +
+                      (iso === danas && !on ? " ring-1 ring-teal-500" : "")}>
+                    {i + 1}
+                    <span className="flex gap-0.5 h-1">
+                      {info && Array.from({ length: Math.min(3, info.n) }).map((_, j) => (
+                        <span key={j} className={"w-1 h-1 rounded-full " + (on ? "bg-white" : info.kasni ? "bg-red-500" : "bg-teal-600")} />
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2 mt-2.5">Klik na dan prikazuje samo podsjetnike tog dana.</p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel>Tim · aktivni podsjetnici</PanelLabel>
+            <div className="flex flex-col gap-0.5 mt-1">
+              {tim.map(([ime, v]) => {
+                const on = (mod === "moji" && ime === currentUser) || (mod === "tim" && fKolega === ime);
+                return (
+                  <button key={ime} type="button"
+                    onClick={() => { if (on && mod === "tim") setFKolega("Svi"); else if (ime === currentUser) { setMod("moji"); setFKolega("Svi"); } else { setMod("tim"); setFKolega(ime); } }}
+                    className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1.5 " + (on ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
+                    <Avatar name={ime} size="sm" />
+                    <span className="flex-1 text-[12.5px] text-slate-700 dark:text-slate-300 truncate">{ime}</span>
+                    {v.kasni > 0 && <span className="text-[11px] font-semibold text-red-700 bg-red-100 dark:bg-red-900/40 dark:text-red-300 px-1.5 rounded-full">{v.kasni} kasni</span>}
+                    <b className="text-[13px] text-slate-900 dark:text-slate-100 w-5 text-right">{v.n}</b>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <PanelLabel right={<span className="text-[11px] font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-px rounded-full">{fmtN(bezKoraka.length)} {plural(bezKoraka.length, "firma", "firme", "firmi")}</span>}>Bez sljedećeg koraka</PanelLabel>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mb-1">
+              {mod === "moji" ? "Tvoje firme" : fKolega !== "Svi" ? `Firme (${fKolega})` : "Firme"} u pregovorima bez podsjetnika i bez kontakta duže od 3 mjeseca.
+            </p>
+            {bezKoraka.length === 0 && <p className="text-xs text-green-700 dark:text-green-400 py-1">Sve firme u pregovorima imaju sljedeći korak.</p>}
+            <div className={bezLimit > 5 ? "max-h-[360px] overflow-y-auto -mx-1 px-1" : ""}>
+              {bezKoraka.slice(0, bezLimit).map(({ p, zk }) => (
+                <div key={p.id} className="flex items-center gap-2 py-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{p.naziv_firme}</div>
+                    <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{p.status} · {zk ? `zadnji kontakt ${relDate(zk)}` : "bez zabilježenog kontakta"}</div>
+                  </div>
+                  <button type="button" disabled={!currentUser} onClick={() => otvoriNovi(zapisi.find((z) => z.key === "P" + p.id))}
+                    className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 text-teal-700 dark:text-teal-400 inline-flex items-center justify-center hover:bg-teal-50 dark:hover:bg-teal-900/30 shrink-0 disabled:opacity-40"
+                    aria-label={`Dodaj podsjetnik za ${p.naziv_firme}`} title="Dodaj podsjetnik">
+                    <Bell size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {bezKoraka.length > bezLimit && (
+              <button type="button" onClick={() => setBezLimit(bezLimit + 20)} className="w-full mt-2 h-8 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-teal-700 dark:text-teal-400 hover:bg-slate-50 dark:hover:bg-slate-800">
+                Prikaži još ({fmtN(bezKoraka.length - bezLimit)})
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showNovi && (
+        <NoviPodsjetnikModal zapisi={zapisi} pocetni={noviPocetni} currentUser={currentUser}
+          onSave={noviPodsjetnik} onClose={() => { setShowNovi(false); setNoviPocetni(null); }} />
       )}
     </div>
   );
