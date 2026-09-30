@@ -160,7 +160,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
             {istorija.map((s) => (
               <div key={s.id} className="bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 text-sm">
                 <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 mb-0.5">
-                  <Calendar size={11} /> {fmtDate(s.datum)} · {s.tehnicar}
+                  <Calendar size={11} /> {fmtDate(s.datum)} · {s.tehnicar}{s.vrsta ? ` · ${s.vrsta}` : ""}{s.proizvod ? ` · ${s.proizvod}` : ""}
                 </div>
                 <p className="text-slate-700 dark:text-slate-300">{s.opis}</p>
               </div>
