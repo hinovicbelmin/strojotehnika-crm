@@ -672,6 +672,7 @@ export default function HomePage() {
               {tab === "kupci" && (
                 <KupciTab
                   data={kupci}
+                  potencijali={potencijali}
                   currentUser={currentUser}
                   onAdd={addKupac}
                   onUpdate={updateKupac}
