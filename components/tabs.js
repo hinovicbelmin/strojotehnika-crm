@@ -1240,6 +1240,82 @@ function proizvodPorodica(naziv) {
 }
 const kratkiProizvod = (s) => String(s || "")
   .replace(/^SOLIDWORKS\s+/i, "SW ").replace(/^DraftSight\s+/i, "DS ").replace(/^3DEXPERIENCE\s+Works\s+/i, "3DX ").trim();
+
+// ---------- porodice proizvoda (Kupci i licence) ----------
+// Redoslijed = redoslijed prikaza; SOLIDWORKS Add-in proizvodi su pod SOLIDWORKS,
+// uloge 3DEXPERIENCE platforme i tehnički paketi ("NOT FOR SALE…") pod 3DEXPERIENCE.
+const PORODICE_LIC = ["SOLIDWORKS", "3DEXPERIENCE", "DraftSight", "SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "Ostalo"];
+const PORODICA_STIL = {
+  SOLIDWORKS: ["bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900", "bg-red-600", "text-red-700 dark:text-red-300"],
+  "3DEXPERIENCE": ["bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900", "bg-blue-600", "text-blue-700 dark:text-blue-300"],
+  DraftSight: ["bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900", "bg-orange-600", "text-orange-700 dark:text-orange-300"],
+  SolidCAM: ["bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900", "bg-green-600", "text-green-700 dark:text-green-300"],
+  SWOOD: ["bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900", "bg-amber-600", "text-amber-800 dark:text-amber-300"],
+  DriveWorks: ["bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900", "bg-violet-600", "text-violet-700 dark:text-violet-300"],
+  SolidSteel: ["bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900", "bg-cyan-600", "text-cyan-800 dark:text-cyan-300"],
+  Ostalo: ["bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700", "bg-slate-400", "text-slate-600 dark:text-slate-300"],
+};
+const ISTEKLA_STIL = "bg-white text-slate-400 border-slate-200 dark:bg-slate-900 dark:text-slate-500 dark:border-slate-700";
+const ULOGE_3DX = /(Swymer|Collaborative|Collaborator|Business Analyst|Project Planner|Works Learner|Shop Floor|3D Creator|3D Sculptor|Manufacturing Definition|Industrial Designer|Release Engineer|Engineer$|Structural Designer|Product Architect|Innovator)/i;
+const TEHNICKI_PAKET = /^NOT FOR SALE/i;
+const jeKomponenta = (k) => /^with\b/i.test((k.naziv_proizvoda_2 || "").trim());
+function porodicaLicence(k) {
+  const p = (k.naziv_proizvoda || "").trim();
+  if (!p) return "Ostalo";
+  if (TEHNICKI_PAKET.test(p) || /3DEXPERIENCE|^Platform\b/i.test(p) || ULOGE_3DX.test(p)) return "3DEXPERIENCE";
+  for (const f of ["SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "DraftSight"]) if (p.toLowerCase().includes(f.toLowerCase())) return f;
+  if (/SOLIDWORKS|^PhotoWorks/i.test(p)) return "SOLIDWORKS";
+  return "Ostalo";
+}
+// osnovni SOLIDWORKS paket (Standard/Professional/Premium) — sve ostalo pod SOLIDWORKS je add-in
+const jeSwAddIn = (k) => porodicaLicence(k) === "SOLIDWORKS" && !/^SOLIDWORKS\s+(Design\s+)?(Standard|Professional|Premium)\b|EDU|Student|Learner|Research/i.test((k.naziv_proizvoda || "").trim());
+// naziv za prikaz u spisku (tooltip): uloga/proizvod, bez komponenti paketa
+function prikazniNaziv(k) {
+  const p = (k.naziv_proizvoda || "").trim(), s = (k.naziv_proizvoda_2 || "").trim();
+  if (TEHNICKI_PAKET.test(p)) return s || "Tehnički paket";
+  return p || s || "—";
+}
+// sažetak po porodicama za jednu firmu (broj = isti način brojanja kao kolona "Licenci")
+function porodiceFirme(lic) {
+  const m = new Map();
+  for (const k of lic) {
+    const f = porodicaLicence(k);
+    if (!m.has(f)) m.set(f, { f, n: 0, aktivnih: 0, proizvodi: new Map() });
+    const g = m.get(f);
+    g.n += licKom(k);
+    if (!k.end_date || daysDiff(k.end_date) >= 0) g.aktivnih += 1;
+    if (!jeKomponenta(k)) { const nz = prikazniNaziv(k); g.proizvodi.set(nz, (g.proizvodi.get(nz) || 0) + licKom(k)); }
+  }
+  return PORODICE_LIC.filter((f) => m.has(f)).map((f) => { const g = m.get(f); return { ...g, isteklo: g.aktivnih === 0 }; });
+}
+const porodiceTekst = (lic) => porodiceFirme(lic).map((g) => `${g.f} ${fmtN(g.n)}`).join(" · ");
+// licence za detaljni prikaz: komponente paketa ("with …") i uloge tehničkog paketa spojene uz glavnu licencu
+function spojeneLicence(lic) {
+  const grupe = new Map();
+  for (const k of lic) {
+    const key = [k.serijski_broj || k.id, (k.naziv_proizvoda || "").trim(), k.start_date || "", k.end_date || ""].join("|");
+    if (!grupe.has(key)) grupe.set(key, { id: k.id, glavna: null, komponente: [], uloge: [], kom: 0, redovi: [] });
+    const g = grupe.get(key);
+    g.redovi.push(k);
+    g.kom = Math.max(g.kom, licKom(k));
+    const sub = (k.naziv_proizvoda_2 || "").trim();
+    if (TEHNICKI_PAKET.test(k.naziv_proizvoda || "")) { if (sub) g.uloge.push(sub); if (!g.glavna) g.glavna = k; }
+    else if (jeKomponenta(k)) g.komponente.push(sub.replace(/^with\s+/i, "").replace(/^SOLIDWORKS\s+/i, "").replace(/\s+Add-On$/i, ""));
+    else if (!g.glavna || jeKomponenta(g.glavna)) g.glavna = k;
+  }
+  // komponente s vlastitim serijskim brojem ("with …") pripoji glavnoj licenci istog paketa i perioda
+  const lista = [...grupe.values()];
+  const glavne = lista.filter((g) => g.glavna && !jeKomponenta(g.glavna));
+  const out = [];
+  for (const g of lista) {
+    if (g.glavna) { out.push(g); continue; }
+    const r0 = g.redovi[0];
+    const meta = glavne.find((x) => (x.glavna.naziv_proizvoda || "").trim() === (r0.naziv_proizvoda || "").trim() && x.glavna.start_date === r0.start_date && x.glavna.end_date === r0.end_date);
+    if (meta) meta.komponente.push(...g.komponente.filter((c) => !meta.komponente.includes(c)));
+    else out.push(g);
+  }
+  return out.map((g) => ({ ...g, glavna: g.glavna || g.redovi[0] }));
+}
 function dokle(dateStr) {
   if (!dateStr) return "—";
   const n = daysDiff(dateStr);
@@ -1368,7 +1444,14 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
   const prodavacLicence = (k) => (prodavaciIdx.get(companyKey(k.naziv_firme)) || [])[0] || "Nedodijeljeno";
 
   const drzave = useMemo(() => [...new Set(data.map((k) => k.drzava).filter(Boolean))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
-  const porodice = useMemo(() => [...new Set(data.map((k) => proizvodPorodica(k.naziv_proizvoda)))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
+  const porodice = useMemo(() => { const s = new Set(data.map((k) => porodicaLicence(k))); return PORODICE_LIC.filter((f) => s.has(f)); }, [data]);
+  const [tip, setTip] = useState(null); // tooltip za čip porodice
+  useEffect(() => {
+    if (!tip) return;
+    const zatvori = () => setTip(null);
+    window.addEventListener("scroll", zatvori, true);
+    return () => window.removeEventListener("scroll", zatvori, true);
+  }, [tip]);
 
   const query = q.trim().toLowerCase();
   // svi filteri osim roka (za pločice, kalendar i desnu kolonu)
@@ -1377,7 +1460,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
       const polja = [k.naziv_firme, k.grad, k.drzava, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj, k.adresa];
       if (!polja.some((x) => (x || "").toString().toLowerCase().includes(query))) return false;
     }
-    if (fProizvod !== "Svi" && proizvodPorodica(k.naziv_proizvoda) !== fProizvod) return false;
+    if (fProizvod !== "Svi" && porodicaLicence(k) !== fProizvod) return false;
     if (fDrzava !== "Sve" && k.drzava !== fDrzava) return false;
     if (fProdavac !== "Svi" && prodavacLicence(k) !== fProdavac) return false;
     return true;
@@ -1459,7 +1542,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
 
   const poProizvodu = useMemo(() => {
     const m = new Map();
-    base.forEach((k) => { const p = proizvodPorodica(k.naziv_proizvoda); m.set(p, (m.get(p) || 0) + licKom(k)); });
+    base.forEach((k) => { const p = porodicaLicence(k); m.set(p, (m.get(p) || 0) + licKom(k)); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [base]);
   const maxProiz = poProizvodu.length ? poProizvodu[0][1] : 1;
@@ -1512,14 +1595,36 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
       </span>
     );
   };
+  const pokaziTip = (e, sadrzaj) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ x: r.left, y: r.bottom + 6, ...sadrzaj });
+  };
   const proizvodiChips = (f) => {
-    const ps = f.lic.map((k) => kratkiProizvod(k.naziv_proizvoda) + (licKom(k) > 1 ? ` ×${licKom(k)}` : "")).filter((x) => x.trim());
-    const uniq = [...new Set(ps)];
+    const gs = porodiceFirme(f.lic);
+    if (gs.length === 0) return <span className="text-xs text-slate-400">—</span>;
+    const vidljive = gs.slice(0, 3), ostale = gs.slice(3);
     return (
-      <div className="flex flex-wrap gap-1.5">
-        {uniq.slice(0, 2).map((p) => <ProizvodChip key={p}>{p}</ProizvodChip>)}
-        {uniq.length > 2 && <ProizvodChip>+{uniq.length - 2}</ProizvodChip>}
-        {uniq.length === 0 && <span className="text-xs text-slate-400">—</span>}
+      <div className="flex flex-nowrap items-center gap-1.5 min-w-0">
+        {vidljive.map((g) => {
+          const [cls, dot] = PORODICA_STIL[g.f] || PORODICA_STIL.Ostalo;
+          const lista = [...g.proizvodi.entries()].sort((a, b) => b[1] - a[1]);
+          return (
+            <span key={g.f}
+              onMouseEnter={(e) => pokaziTip(e, { naslov: `${g.f} · ${fmtN(g.n)} ${plural(g.n, "licenca", "licence", "licenci")}${g.isteklo ? " · sve istekle" : ""}`, stavke: lista })}
+              onMouseLeave={() => setTip(null)}
+              className={"inline-flex items-center gap-1.5 h-[26px] pl-2 pr-2.5 rounded-md border text-[12.5px] font-semibold whitespace-nowrap cursor-default " + (g.isteklo ? ISTEKLA_STIL : cls)}>
+              <span className={"w-[7px] h-[7px] rounded-[2px] " + (g.isteklo ? "bg-slate-300 dark:bg-slate-600" : dot)} />
+              {g.f} <span className="tabular-nums">{fmtN(g.n)}</span>
+              {g.isteklo && <span className="text-[10.5px] font-semibold">istekla</span>}
+            </span>
+          );
+        })}
+        {ostale.length > 0 && (
+          <span onMouseEnter={(e) => pokaziTip(e, { naslov: "Ostale porodice", stavke: ostale.map((g) => [g.f, g.n]) })} onMouseLeave={() => setTip(null)}
+            className="inline-flex items-center h-[26px] px-2 rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-xs font-semibold text-slate-500 dark:text-slate-400 cursor-default">
+            +{ostale.length}
+          </span>
+        )}
       </div>
     );
   };
@@ -1527,7 +1632,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
     <div className="bg-white dark:bg-slate-900 border border-teal-100 dark:border-teal-900/60 rounded-xl px-3.5 pb-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2 py-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Licence · {f.lic.length} {plural(f.lic.length, "serijski broj", "serijska broja", "serijskih brojeva")}
+          Licence · grupisano po porodici
         </span>
         <span className="flex gap-2">
           {onViewCompany && (
@@ -1536,20 +1641,42 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
           {canDelete && <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} disabled={!currentUser} onClick={() => novaLicenca(f)}><Plus size={13} /> Licenca</button>}
         </span>
       </div>
-      {f.lic.map((k) => (
-        <div key={k.id} className="grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700">
-          <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
-          <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
-          <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
-            {k.naziv_proizvoda || "—"}
-            {k.naziv_proizvoda_2 && <span className="text-slate-400 dark:text-slate-500 font-normal"> · {k.naziv_proizvoda_2}</span>}
-            {k.napomena && <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal truncate" title={k.napomena}>{k.napomena}</span>}
-          </span>
-          <span className="text-[13px] text-slate-700 dark:text-slate-300">{k.broj_licenci ?? "—"} kom.</span>
-          <PeriodBar start={k.start_date} end={k.end_date} />
-          <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
-        </div>
-      ))}
+      {porodiceFirme(f.lic).map((g) => {
+        const [, dot, txt] = PORODICA_STIL[g.f] || PORODICA_STIL.Ostalo;
+        const redovi = spojeneLicence(f.lic.filter((k) => porodicaLicence(k) === g.f));
+        return (
+          <div key={g.f} className="mt-1">
+            <div className="flex items-center gap-2 pt-2 pb-1.5">
+              <span className={"w-2 h-2 rounded-[3px] " + (g.isteklo ? "bg-slate-300" : dot)} />
+              <span className={"text-[11.5px] font-extrabold uppercase tracking-wider " + (g.isteklo ? "text-slate-400" : txt)}>{g.f} · {fmtN(g.n)} {plural(g.n, "licenca", "licence", "licenci")}</span>
+              {g.isteklo && <span className="text-[11.5px] text-slate-400">· sve istekle</span>}
+            </div>
+            {redovi.map((r) => {
+              const k = r.glavna;
+              const tehnicki = TEHNICKI_PAKET.test(k.naziv_proizvoda || "");
+              const sub = (k.naziv_proizvoda_2 || "").trim();
+              const pokaziSub = !tehnicki && sub && !jeKomponenta(k) && sub.toLowerCase() !== (k.naziv_proizvoda || "").trim().toLowerCase();
+              return (
+                <div key={r.id} className={"grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700 " + (k.end_date && daysDiff(k.end_date) < 0 ? "opacity-60" : "")}>
+                  <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
+                  <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
+                  <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
+                    {tehnicki ? "Tehnički paket za cloud (3DEXPERIENCE)" : (k.naziv_proizvoda || "—")}
+                    {jeSwAddIn(k) && <span className="ml-1.5 text-[10.5px] font-bold text-red-700 bg-red-50 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900 px-1.5 rounded">add-in</span>}
+                    {pokaziSub && <span className="text-slate-400 dark:text-slate-500 font-normal"> · {sub}</span>}
+                    {r.komponente.length > 0 && <span className="block text-xs text-slate-400 dark:text-slate-500 font-normal">uključuje: {r.komponente.join(", ")}</span>}
+                    {r.uloge.length > 0 && <span className="block text-xs text-slate-400 dark:text-slate-500 font-normal">uloge: {r.uloge.join(", ")}</span>}
+                    {k.napomena && <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal truncate" title={k.napomena}>{k.napomena}</span>}
+                  </span>
+                  <span className="text-[13px] text-slate-700 dark:text-slate-300">{r.kom} kom.</span>
+                  <PeriodBar start={k.start_date} end={k.end_date} />
+                  <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -1700,7 +1827,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                             <LicPill status={f.status} />
                           </span>
                           <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                            {f.lic.map((k) => kratkiProizvod(k.naziv_proizvoda)).filter(Boolean).join(", ") || "—"} · {f.kom} kom.
+                            {porodiceTekst(f.lic) || "—"}
                           </span>
                           <span className={"block text-xs font-semibold mt-0.5 " + dokleCls(f.sljedeca)}>Obnova {dokle(f.sljedeca)} · {kratakDatum(f.sljedeca)}</span>
                           {nadogradnjeInfo && nadogradnjeInfo.get(f.key) && <span className="block mt-1"><NadogradnjaBadge info={nadogradnjeInfo.get(f.key)} /></span>}
@@ -1815,7 +1942,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                   {f.prodavaci.length ? <Avatar name={f.prodavaci[0]} /> : <span className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 shrink-0" />}
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{due.map((k) => kratkiProizvod(k.naziv_proizvoda) + (licKom(k) > 1 ? ` ×${licKom(k)}` : "")).join(", ")}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{porodiceTekst(due)}</span>
                   </span>
                   <span className="text-right shrink-0">
                     <span className="block text-[12.5px] font-semibold text-amber-700 dark:text-amber-400">{dokle(f.sljedeca)}</span>
@@ -1852,6 +1979,15 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
       {(showNew || editing) && (
         <KupacForm initial={editing} prefill={prefill} currentUser={currentUser} onSave={handleSave}
           onClose={() => { setShowNew(false); setEditing(null); setPrefill(null); }} />
+      )}
+
+      {tip && (
+        <div className="fixed z-[60] w-[330px] rounded-xl bg-slate-900 text-slate-200 shadow-2xl px-3 py-2.5 text-xs leading-relaxed pointer-events-none"
+          style={{ left: Math.max(8, Math.min(tip.x, (typeof window !== "undefined" ? window.innerWidth : 1400) - 340)), top: tip.y }}>
+          <div className="font-bold text-white mb-1">{tip.naslov}</div>
+          {tip.stavke.slice(0, 8).map(([n, q]) => <div key={n} className="truncate">{kratkiProizvod(n)}{q > 1 ? ` ×${fmtN(q)}` : ""}</div>)}
+          {tip.stavke.length > 8 && <div className="text-slate-400">… još {tip.stavke.length - 8}</div>}
+        </div>
       )}
 
       {showImport && (
