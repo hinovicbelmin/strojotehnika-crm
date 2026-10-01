@@ -1,13 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
-  Calculator, Tags,
+  Calculator, Tags, ArrowUpCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
-  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
+  COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, upsertRows, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
   getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
@@ -17,6 +17,7 @@ import {
 import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
 import { KalkulatorTab, CjenovnikTab } from "../components/kalkulator";
+import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
 import { Sidebar } from "../components/sidebar";
@@ -32,6 +33,7 @@ const TABS = [
   { id: "cjenovnik", label: "Cjenovnik", icon: Tags },
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
+  { id: "nadogradnje", label: "Nadogradnje", icon: ArrowUpCircle },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
@@ -64,6 +66,9 @@ export default function HomePage() {
   const [cjenovnik, setCjenovnik] = useState([]);
   const [kalkulacije, setKalkulacije] = useState([]);
   const [kalkNacrt, setKalkNacrt] = useState(null); // otvorena kalkulacija ostaje i kad se prebaci na drugi tab
+  const [nadKampanje, setNadKampanje] = useState([]);
+  const [nadLicence, setNadLicence] = useState([]);
+  const [nadFirme, setNadFirme] = useState([]);
 
   // Auth guard
   useEffect(() => {
@@ -101,6 +106,9 @@ export default function HomePage() {
         setForecast(cached.forecast || []);
         setCjenovnik(cached.cjenovnik || []);
         setKalkulacije(cached.kalkulacije || []);
+        setNadKampanje(cached.nadKampanje || []);
+        setNadLicence(cached.nadLicence || []);
+        setNadFirme(cached.nadFirme || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -114,6 +122,9 @@ export default function HomePage() {
       setForecast(all.forecast || []);
       setCjenovnik(all.cjenovnik || []);
       setKalkulacije(all.kalkulacije || []);
+      setNadKampanje(all.nadKampanje || []);
+      setNadLicence(all.nadLicence || []);
+      setNadFirme(all.nadFirme || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -122,8 +133,13 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme]);
+
+  // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
+  const nadAkt = aktuelnaKampanja(nadKampanje);
+  const nadModel = useMemo(() => izgradiNadogradnje({ kupci, licRows: nadLicence, firmRows: nadFirme, akt: nadAkt }), [kupci, nadLicence, nadFirme, nadAkt]);
+  const nadSazetak = useMemo(() => nadogradnjeSazetak(nadModel, nadAkt), [nadModel, nadAkt]);
 
   // Tema (svijetla/tamna) — pamti se po uređaju/browseru
   useEffect(() => {
@@ -579,6 +595,53 @@ export default function HomePage() {
     );
   };
 
+  /* ---------------- Nadogradnje ---------------- */
+  // items: [{ id | null, data }] — postojeći zapis se ažurira, novi se upisuje
+  const saveNadLicence = async (items) => {
+    try {
+      const nove = items.filter((i) => !i.id).map((i) => i.data);
+      const izmjene = items.filter((i) => i.id);
+      const inserted = nove.length ? await upsertRows("nadogradnje_licence", nove, "kampanja,serijski_broj,proizvod") : [];
+      const updated = [];
+      for (const i of izmjene) updated.push(await updateRow("nadogradnje_licence", i.id, i.data));
+      const um = new Map([...updated, ...inserted].map((u) => [u.id, u]));
+      setNadLicence((prev) => {
+        const ids = new Set(prev.map((r) => r.id));
+        return [...inserted.filter((r) => !ids.has(r.id)), ...prev.map((r) => (um.has(r.id) ? um.get(r.id) : r))];
+      });
+      showToast(items.length > 1 ? `Sačuvano ${items.length} licenci` : "Licenca sačuvana");
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju nadogradnje", "error");
+      throw e;
+    }
+  };
+  const saveNadFirma = async (id, data) => {
+    try {
+      const rec = id ? await updateRow("nadogradnje_firme", id, data) : (await upsertRows("nadogradnje_firme", [data], "kampanja,firma_key"))[0];
+      setNadFirme((prev) => (prev.some((r) => r.id === rec.id) ? prev.map((r) => (r.id === rec.id ? rec : r)) : [rec, ...prev]));
+      showToast("Nadogradnja sačuvana");
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju firme (nadogradnje)", "error");
+      throw e;
+    }
+  };
+  const novaNadKampanja = async (verzija) => {
+    try {
+      const rec = await insertRow("nadogradnje_kampanje", {
+        proizvod: "SOLIDWORKS", verzija, created_by: currentUser || "—", created_at: new Date().toISOString(),
+        updated_by: currentUser || "—", updated_at: new Date().toISOString(),
+      });
+      setNadKampanje((prev) => [rec, ...prev]);
+      showToast(`Otvorena kampanja SOLIDWORKS ${verzija}`);
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri otvaranju kampanje", "error");
+      throw e;
+    }
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
     try {
@@ -616,6 +679,10 @@ export default function HomePage() {
           .map((k) => (k.naziv_firme || "").trim().toLowerCase()).filter(Boolean)
       ).size,
       tone: "warn", hint: "firmi — licenca ističe ≤30 dana",
+    },
+    nadogradnje: {
+      count: nadogradnjeBadge(nadModel),
+      tone: "warn", hint: "firmi za nadogradnju — održavanje ističe ≤30 dana",
     },
     lidovi: {
       count: lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length,
@@ -785,6 +852,7 @@ export default function HomePage() {
                 <KupciTab
                   data={kupci}
                   potencijali={potencijali}
+                  nadogradnjeInfo={nadSazetak}
                   currentUser={currentUser}
                   onAdd={addKupac}
                   onUpdate={updateKupac}
@@ -806,6 +874,23 @@ export default function HomePage() {
                   onUpdate={updatePodrska}
                   onDelete={deletePodrska}
                   onViewCompany={setViewingCompany}
+                />
+              )}
+              {tab === "nadogradnje" && (
+                <NadogradnjeTab
+                  kupci={kupci}
+                  kampanje={nadKampanje}
+                  licRows={nadLicence}
+                  firmRows={nadFirme}
+                  potencijali={potencijali}
+                  podrska={podrska}
+                  currentUser={currentUser}
+                  onSaveLicence={saveNadLicence}
+                  onSaveFirma={saveNadFirma}
+                  onNovaKampanja={novaNadKampanja}
+                  onAddPodrska={addPodrska}
+                  onViewCompany={setViewingCompany}
+                  showToast={showToast}
                 />
               )}
               {tab === "forecast" && (
@@ -846,6 +931,7 @@ export default function HomePage() {
           kupci={kupci}
           podrska={podrska}
           forecast={forecast}
+          nadogradnjeInfo={nadSazetak}
           onClose={() => setViewingCompany(null)}
         />
       )}
