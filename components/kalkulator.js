@@ -21,12 +21,14 @@ const OZNAKE = [
   { k: "ALC", opis: "godišnje održavanje trajne licence" },
   { k: "YLC", opis: "godišnja pretplata" },
   { k: "QLC", opis: "tromjesečna pretplata" },
+  { k: "YSC", opis: "godišnja pretplata — 3DEXPERIENCE" },
 ];
 const OZNAKA_CLS = {
   PLC: "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200",
   ALC: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",
   YLC: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
   QLC: "bg-pink-100 text-pink-800 dark:bg-pink-900/50 dark:text-pink-200",
+  YSC: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200",
 };
 
 /* ---------------------------------------------------------------------- */
@@ -692,7 +694,7 @@ export function CjenovnikTab({ data = [], currentUser, onAdd, onUpdate, onDelete
     for (const p of data) { const c = broj(p.cijena_kupac); if (!m.has(p.naziv) || c < m.get(p.naziv) || p.oznaka === "PLC") m.set(p.naziv, p.oznaka === "PLC" ? c : Math.min(c, m.get(p.naziv) ?? c)); }
     return m;
   }, [data]);
-  const redOznake = (o) => { const i = ["PLC", "ALC", "YLC", "QLC"].indexOf(o); return i < 0 ? 9 : i; };
+  const redOznake = (o) => { const i = ["PLC", "ALC", "YLC", "YSC", "QLC"].indexOf(o); return i < 0 ? 9 : i; };
   const lista = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return data
