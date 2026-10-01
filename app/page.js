@@ -20,7 +20,7 @@ import { KalkulatorTab, CjenovnikTab } from "../components/kalkulator";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
-import { Sidebar } from "../components/sidebar";
+import { Sidebar, ImeNalogaModal } from "../components/sidebar";
 import { AppSkeleton } from "../components/skeleton";
 import { ToastStack } from "../components/toast";
 
@@ -51,6 +51,8 @@ export default function HomePage() {
   const [tab, setTab] = useState("pregled");
   const [navOpen, setNavOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [needsName, setNeedsName] = useState(false); // nalog još nije povezan s imenom kolege
   const [theme, setTheme] = useState("light");
   const [density, setDensity] = useState("comfortable");
   const [navCollapsed, setNavCollapsed] = useState(false);
@@ -70,6 +72,22 @@ export default function HomePage() {
   const [nadLicence, setNadLicence] = useState([]);
   const [nadFirme, setNadFirme] = useState([]);
 
+  // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
+  const primijeniKorisnika = (user) => {
+    if (!user) return;
+    try { localStorage.removeItem("crm_trenutni_korisnik"); } catch (e) { /* stari način pamćenja imena */ }
+    setAccountEmail(user.email || "");
+    let ime = (user.user_metadata && user.user_metadata.ime) || "";
+    if (RENAMED_COLLEAGUES[ime]) ime = RENAMED_COLLEAGUES[ime];
+    if (ime && COLLEAGUE_NAMES.includes(ime)) {
+      setCurrentUser(ime);
+      setNeedsName(false);
+    } else {
+      setCurrentUser("");
+      setNeedsName(true);
+    }
+  };
+
   // Auth guard
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -77,18 +95,21 @@ export default function HomePage() {
         router.push("/login");
       } else {
         setSession(data.session);
-        let saved = localStorage.getItem("crm_trenutni_korisnik") || "";
-        if (RENAMED_COLLEAGUES[saved]) {
-          saved = RENAMED_COLLEAGUES[saved];
-          localStorage.setItem("crm_trenutni_korisnik", saved);
-        }
-        setCurrentUser(saved);
+        primijeniKorisnika(data.session.user);
+        // osvježi podatke naloga sa servera (npr. ako je administrator ispravio ime)
+        supabase.auth.getUser().then(({ data: u }) => { if (u && u.user) primijeniKorisnika(u.user); });
       }
       setCheckingAuth(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
       setSession(sess);
-      if (!sess) router.push("/login");
+      if (!sess) {
+        setCurrentUser("");
+        setAccountEmail("");
+        router.push("/login");
+      } else {
+        primijeniKorisnika(sess.user);
+      }
     });
     return () => listener.subscription.unsubscribe();
   }, [router]);
@@ -172,14 +193,19 @@ export default function HomePage() {
     localStorage.setItem("crm_density", next);
   };
 
-  const chooseUser = (name) => {
+  // Jednokratno povezivanje naloga s imenom (sprema se uz nalog u Supabase, vrijedi na svakom računaru)
+  const poveziIme = async (name) => {
+    const { error } = await supabase.auth.updateUser({ data: { ime: name } });
+    if (error) throw error;
     setCurrentUser(name);
-    localStorage.setItem("crm_trenutni_korisnik", name);
+    setNeedsName(false);
   };
 
   const isTehnicar = getColleagueDept(currentUser) === "Tehnička podrška";
 
   const signOut = async () => {
+    setCurrentUser("");
+    try { localStorage.removeItem("crm_trenutni_korisnik"); } catch (e) { /* */ }
     await supabase.auth.signOut();
     await idbRemove(CACHE_KEY);
     router.push("/login");
@@ -706,7 +732,7 @@ export default function HomePage() {
         badges={navBadges}
         currentUser={currentUser}
         currentDept={getColleagueDept(currentUser)}
-        onChooseUser={chooseUser}
+        accountEmail={accountEmail}
         theme={theme}
         onToggleTheme={toggleTheme}
         onSignOut={signOut}
@@ -750,22 +776,16 @@ export default function HomePage() {
             >
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline md:hidden">Ja sam:</span>
-            <select
-              className="md:hidden text-sm rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors duration-150"
-              value={currentUser}
-              onChange={(e) => chooseUser(e.target.value)}
-            >
-              <option value="">— odaberi se —</option>
-              {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
-            </select>
+            {currentUser && (
+              <span className="md:hidden inline-flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300" title={accountEmail}>
+                <Lock size={13} className="text-slate-400" /> <span className="max-w-[120px] truncate">{currentUser}</span>
+              </span>
+            )}
           </div>
         </header>
 
-        {!currentUser && (
-          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/40 px-6 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-            <AlertTriangle size={13} /> <span className="hidden md:inline">Odaberi svoje ime dolje lijevo u meniju da bi se ispravno bilježilo ko unosi/ažurira podatke.</span><span className="md:hidden">Odaberi svoje ime gore desno da bi se ispravno bilježilo ko unosi/ažurira podatke.</span>
-          </div>
+        {needsName && (
+          <ImeNalogaModal accountEmail={accountEmail} onConfirm={poveziIme} onSignOut={signOut} />
         )}
 
         <main className={"flex-1 overflow-y-auto p-4 sm:p-6 " + (density === "compact" ? "density-compact" : "")}>
