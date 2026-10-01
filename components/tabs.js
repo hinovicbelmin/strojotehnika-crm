@@ -18,6 +18,7 @@ import {
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, relDate, fmtN, headerBtnSec } from "./crmBits";
+import { NadogradnjaBadge } from "./nadogradnje";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
@@ -1325,7 +1326,7 @@ function obnovaRang(f) {
   return n >= 0 ? [0, n] : [1, -n];
 }
 
-export function KupciTab({ data, potencijali = [], currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany, presetLicenca, onPresetConsumed }) {
+export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser, onAdd, onUpdate, onDelete, onBulkImportKupci, onDeleteAll, canDelete = true, onViewCompany, presetLicenca, onPresetConsumed }) {
   const [q, setQ] = useState("");
   const [rok, setRok] = useState("Sve");
   const [fProizvod, setFProizvod] = useState("Svi");
@@ -1652,6 +1653,7 @@ export function KupciTab({ data, potencijali = [], currentUser, onAdd, onUpdate,
                           <td className="px-3.5 py-2.5 max-w-[280px]">
                             <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</div>
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lokacija(f.grad, f.drzava)}</div>
+                            {nadogradnjeInfo && nadogradnjeInfo.get(f.key) && <div className="mt-1"><NadogradnjaBadge info={nadogradnjeInfo.get(f.key)} /></div>}
                           </td>
                           <td className="px-3.5 py-2.5">{proizvodiChips(f)}</td>
                           <td className="px-3.5 py-2.5 text-center font-semibold text-slate-900 dark:text-slate-100">{f.kom}</td>
@@ -1705,6 +1707,7 @@ export function KupciTab({ data, potencijali = [], currentUser, onAdd, onUpdate,
                             {f.lic.map((k) => kratkiProizvod(k.naziv_proizvoda)).filter(Boolean).join(", ") || "—"} · {f.kom} kom.
                           </span>
                           <span className={"block text-xs font-semibold mt-0.5 " + dokleCls(f.sljedeca)}>Obnova {dokle(f.sljedeca)} · {kratakDatum(f.sljedeca)}</span>
+                          {nadogradnjeInfo && nadogradnjeInfo.get(f.key) && <span className="block mt-1"><NadogradnjaBadge info={nadogradnjeInfo.get(f.key)} /></span>}
                         </span>
                       </button>
                       {open && <div className="px-3 pb-3">{licenceDetalji(f)}</div>}
