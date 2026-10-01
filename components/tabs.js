@@ -1533,11 +1533,11 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
           {onViewCompany && (
             <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} onClick={() => onViewCompany(f.naziv)}><ExternalLink size={13} /> 360° firme</button>
           )}
-          <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} disabled={!currentUser} onClick={() => novaLicenca(f)}><Plus size={13} /> Licenca</button>
+          {canDelete && <button type="button" className={headerBtnSec + " h-8 text-[12.5px] px-2.5"} disabled={!currentUser} onClick={() => novaLicenca(f)}><Plus size={13} /> Licenca</button>}
         </span>
       </div>
       {f.lic.map((k) => (
-        <div key={k.id} className="grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px_auto] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+        <div key={k.id} className="grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700">
           <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
           <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
           <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
@@ -1548,10 +1548,6 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
           <span className="text-[13px] text-slate-700 dark:text-slate-300">{k.broj_licenci ?? "—"} kom.</span>
           <PeriodBar start={k.start_date} end={k.end_date} />
           <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
-          <span className="flex items-center justify-end gap-1">
-            <button type="button" className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi licencu" aria-label="Uredi licencu"><Pencil size={14} /></button>
-            {canDelete && <ConfirmDelete label={`${k.naziv_firme} — ${k.naziv_proizvoda || "licenca"}`} onConfirm={() => onDelete(k.id)} />}
-          </span>
         </div>
       ))}
     </div>
@@ -1577,9 +1573,9 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className={headerBtnSec} onClick={() => setShowImport(true)}><RefreshCw size={15} /> Mjesečno ažuriranje</button>
+          {canDelete && <button type="button" className={headerBtnSec} onClick={() => setShowImport(true)}><RefreshCw size={15} /> Mjesečno ažuriranje</button>}
           <button type="button" className={headerBtnSec} onClick={exportCSV}><Download size={15} /> Izvoz</button>
-          <button type="button" className={btnPrimary + " h-9"} onClick={() => { setEditing(null); setPrefill(null); setShowNew(true); }} disabled={!currentUser}><Plus size={15} /> Novi kupac</button>
+          {canDelete && <button type="button" className={btnPrimary + " h-9"} onClick={() => { setEditing(null); setPrefill(null); setShowNew(true); }} disabled={!currentUser}><Plus size={15} /> Novi kupac</button>}
           {canDelete && (
             <IconMenu label="Više opcija" items={[
               { label: "Obriši sve kupce", icon: Trash2, danger: true, disabled: data.length === 0, onClick: () => setShowDeleteAll(true) },
@@ -1730,7 +1726,6 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                       <SortHead label="Kom." field="broj_licenci" sort={sortL} setSort={setSortL} descFirst className="text-center" />
                       <SortHead label="Pretplata" field="end_date" sort={sortL} setSort={setSortL} />
                       <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</th>
-                      <th className="px-3.5 py-2.5" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1759,12 +1754,6 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                           <LicPill status={licenseStatus(k.end_date).label} />
                           <div className={"text-[11px] mt-1 " + dokleCls(k.end_date)}>{dokle(k.end_date)}</div>
                         </td>
-                        <td className="px-3.5 py-2.5">
-                          <div className="flex items-center gap-1 justify-end">
-                            <button className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi" aria-label="Uredi"><Pencil size={14} /></button>
-                            {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1780,10 +1769,6 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{k.naziv_proizvoda || "—"} · {k.broj_licenci ?? "—"} kom.</p>
                       <p className={"text-xs mt-0.5 " + dokleCls(k.end_date)}>{fmtDate(k.start_date)} – {fmtDate(k.end_date)} · {dokle(k.end_date)}</p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button className={btnGhostIcon} onClick={() => { setPrefill(null); setEditing(k); }} title="Uredi" aria-label="Uredi"><Pencil size={14} /></button>
-                      {canDelete && <ConfirmDelete label={k.naziv_firme} onConfirm={() => onDelete(k.id)} />}
                     </div>
                   </div>
                 ))}
