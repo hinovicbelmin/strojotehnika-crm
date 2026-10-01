@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users } from "lucide-react";
+import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle } from "lucide-react";
 import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
 
@@ -22,7 +22,7 @@ function licenseDisplayName(k) {
   return k.naziv_proizvoda || "—";
 }
 
-export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, onClose }) {
+export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, nadogradnjeInfo, onClose }) {
   const target = norm(name);
   const [sveHistorija, setSveHistorija] = useState(false);
   let potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
@@ -37,6 +37,11 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
     .map((k) => ({ ...k, __displayName: licenseDisplayName(k) }))
     .filter((k) => k.__displayName !== null);
   const istorija = podrska.filter((s) => norm(s.firma) === target).sort((a, b) => new Date(b.datum) - new Date(a.datum));
+  let nad = nadogradnjeInfo ? nadogradnjeInfo.get(target) : null;
+  if (!nad && nadogradnjeInfo) {
+    const m = findCompanyMatch(name, buildCompanyNameIndex([...new Set(kupci.map((k) => k.naziv_firme))]));
+    if (m) nad = nadogradnjeInfo.get(norm(m));
+  }
   const forecastStavke = (forecast || []).filter((f) => norm(f.kupac) === target).sort((a, b) => (a.mjesec < b.mjesec ? 1 : -1));
 
   return (
@@ -147,6 +152,30 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
           </div>
         )}
       </div>
+
+      {/* Nadogradnje (SOLIDWORKS) */}
+      {nad && (
+        <div className="mb-6">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
+            <ArrowUpCircle size={13} /> Nadogradnje SOLIDWORKS
+          </h4>
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
+            Kampanja {nad.akt}: <b>{nad.status}</b>
+            {nad.najstarija ? <> · najstarija verzija <b>{nad.najstarija}</b></> : " · verzije nisu provjerene"}
+            {" "}· {nad.nLic} {nad.nLic === 1 ? "licenca" : "licenci"}{nad.tehnicar ? ` · ${nad.tehnicar}` : ""}
+          </div>
+          {nad.nadogradnje.length > 0 && (
+            <div className="space-y-1 mt-1.5">
+              {nad.nadogradnje.slice(0, 8).map((n, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px] text-slate-600 dark:text-slate-300 px-1">
+                  <ArrowUpCircle size={13} className="text-violet-600 shrink-0" />
+                  <span><b>{n.od || "?"} → {n.na}</b> · {(n.proizvod || "").replace(/^SOLIDWORKS\s+/i, "").replace(/\s+Technical Product$/i, "")} · <span className="font-mono text-[11px]">{n.sn}</span>{n.ko ? ` · ${n.ko}` : ""} · {fmtDate(n.datum)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Historija podrške */}
       <div className="mb-6">
