@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Lock, LogOut, Sun, Moon, ChevronsLeft, ChevronsRight, ChevronsUpDown, Check } from "lucide-react";
+import { Lock, LogOut, Sun, Moon, ChevronsLeft, ChevronsRight, Check } from "lucide-react";
 import { COLLEAGUES } from "../lib/crm";
 
 // Raspored tabova u grupe (redoslijed = redoslijed u meniju)
@@ -35,7 +35,8 @@ function Tooltip({ children }) {
   );
 }
 
-function UserPicker({ currentUser, onChoose, onClose, collapsed }) {
+// Prikaz prijavljenog korisnika — ime je vezano za nalog (email), ne za računar
+function UserInfo({ currentUser, accountEmail, onClose, collapsed }) {
   const ref = useRef(null);
   useEffect(() => {
     const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
@@ -44,42 +45,94 @@ function UserPicker({ currentUser, onChoose, onClose, collapsed }) {
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [onClose]);
-
   return (
-    <div
-      ref={ref}
-      className={
-        "absolute z-50 w-64 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/40 py-1.5 " +
-        (collapsed ? "left-full ml-3 bottom-0" : "left-0 right-0 bottom-full mb-2 w-auto")
-      }
-    >
-      <p className="px-3 pt-1.5 pb-1 text-[11px] text-slate-500">Ko radi u CRM-u na ovom računaru?</p>
-      {DEPTS.map((dept) => (
-        <div key={dept}>
-          <div className="px-3 pt-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-500">{dept}</div>
-          {COLLEAGUES.filter((c) => c.dept === dept).map((c) => {
-            const active = c.name === currentUser;
-            return (
-              <button
-                key={c.name}
-                onClick={() => { onChoose(c.name); onClose(); }}
-                className={"w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left transition-colors " + (active ? "text-teal-300 bg-teal-400/10" : "text-slate-300 hover:bg-slate-800")}
-              >
-                <span className="w-6 h-6 rounded-full bg-slate-700 text-[10px] font-bold text-slate-200 flex items-center justify-center shrink-0">{initialsOf(c.name)}</span>
-                <span className="flex-1 truncate">{c.name}</span>
-                {active && <Check size={14} />}
-              </button>
-            );
-          })}
+    <div ref={ref}
+      className={"absolute z-50 w-64 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/40 p-3 text-[12.5px] text-slate-300 " +
+        (collapsed ? "left-full ml-3 bottom-0" : "left-0 right-0 bottom-full mb-2 w-auto")}>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5"><Lock size={11} /> Prijavljen nalog</div>
+      <div className="font-semibold text-slate-100">{currentUser || "—"}</div>
+      {accountEmail && <div className="text-slate-400 truncate">{accountEmail}</div>}
+      <p className="text-[11.5px] text-slate-500 mt-2 leading-snug">Ime je vezano za ovaj nalog i sve izmjene se bilježe pod njim. Za drugog kolegu — odjavi se i prijavi s njegovim podacima. Pogrešno ime? Javi administratoru CRM-a.</p>
+    </div>
+  );
+}
+
+// Jednokratni izbor imena za nalog koji još nije povezan s kolegom
+function normAscii(s) {
+  return (s || "").toLowerCase()
+    .replace(/đ/g, "dj").replace(/[čć]/g, "c").replace(/š/g, "s").replace(/ž/g, "z")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+}
+// Pogodi kolegu po emailu (npr. ahmed.mujkanovic@..., hinovicbelmin@...) — samo ako je jednoznačno
+export function pogodiImePoEmailu(email) {
+  const local = normAscii((email || "").split("@")[0]);
+  if (!local) return "";
+  const pogodci = COLLEAGUES.filter((c) => {
+    const dijelovi = c.name.split(/\s+/).map((d) => normAscii(d)).filter(Boolean);
+    const prezime = dijelovi[dijelovi.length - 1];
+    const ime = dijelovi[0];
+    return prezime && local.includes(prezime) && (local.includes(ime) || local.startsWith(ime[0]) || local.endsWith(ime[0]));
+  });
+  return pogodci.length === 1 ? pogodci[0].name : "";
+}
+
+export function ImeNalogaModal({ accountEmail, onConfirm, onSignOut }) {
+  const [izbor, setIzbor] = useState(() => pogodiImePoEmailu(accountEmail));
+  const [busy, setBusy] = useState(false);
+  const [greska, setGreska] = useState("");
+  const potvrdi = async () => {
+    if (!izbor) return;
+    setBusy(true); setGreska("");
+    try { await onConfirm(izbor); } catch (e) { setGreska("Nije uspjelo spremanje. Pokušaj ponovo."); }
+    setBusy(false);
+  };
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-[2px]">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-transparent dark:border-slate-700 flex flex-col max-h-[90vh]">
+        <div className="px-6 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Ko koristi ovaj nalog?</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Nalog <b className="text-slate-700 dark:text-slate-200">{accountEmail || "—"}</b> još nije povezan s imenom.
+            Odaberi svoje ime — ovo se radi samo jednom, a nakon toga se sve izmjene s ovog naloga bilježe pod tim imenom, na svakom računaru.
+          </p>
         </div>
-      ))}
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          {DEPTS.map((dept) => (
+            <div key={dept}>
+              <div className="px-3 pt-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-500">{dept}</div>
+              {COLLEAGUES.filter((c) => c.dept === dept).map((c) => {
+                const active = c.name === izbor;
+                return (
+                  <button key={c.name} type="button" onClick={() => setIzbor(c.name)}
+                    className={"w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors " +
+                      (active ? "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200 font-semibold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                    <span className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-[10.5px] font-bold text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">{initialsOf(c.name)}</span>
+                    <span className="flex-1 truncate">{c.name}</span>
+                    {active && <Check size={15} />}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
+          {greska && <p className="text-xs text-red-600">{greska}</p>}
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={onSignOut} className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 inline-flex items-center gap-1.5"><LogOut size={14} /> Nisam ja — odjavi</button>
+            <button type="button" disabled={!izbor || busy} onClick={potvrdi}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
+              <Check size={15} /> {busy ? "Spremam..." : izbor ? `Ja sam ${izbor.split(" ")[0]}` : "Odaberi ime"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 export function Sidebar({
   tabs, tab, onSelectTab, navOpen, isRestricted, badges,
-  currentUser, currentDept, onChooseUser, theme, onToggleTheme, onSignOut, collapsed, onToggleCollapsed,
+  currentUser, currentDept, accountEmail, theme, onToggleTheme, onSignOut, collapsed, onToggleCollapsed,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // Na mobitelu (otvoren meni preko ekrana) uvijek pun prikaz
@@ -192,13 +245,13 @@ export function Sidebar({
           <div className="relative mt-1">
             <button
               onClick={() => setPickerOpen((o) => !o)}
-              aria-label="Promijeni korisnika"
+              aria-label="Prijavljeni korisnik"
               className={"group relative w-10 h-10 rounded-full text-[13px] font-bold flex items-center justify-center " + (currentUser ? "bg-teal-600 text-white" : "bg-amber-500 text-slate-900")}
             >
               {currentUser ? initialsOf(currentUser) : "?"}
-              {!pickerOpen && <Tooltip>{currentUser || "Odaberi svoje ime"}</Tooltip>}
+              {!pickerOpen && <Tooltip>{currentUser || "Nalog nije povezan s imenom"}</Tooltip>}
             </button>
-            {pickerOpen && <UserPicker currentUser={currentUser} onChoose={onChooseUser} onClose={() => setPickerOpen(false)} collapsed />}
+            {pickerOpen && <UserInfo currentUser={currentUser} accountEmail={accountEmail} onClose={() => setPickerOpen(false)} collapsed />}
           </div>
         </div>
       ) : (
@@ -212,12 +265,12 @@ export function Sidebar({
                 {currentUser ? initialsOf(currentUser) : "?"}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-semibold text-slate-100 truncate">{currentUser || "Odaberi svoje ime"}</span>
-                <span className="block text-[11px] text-slate-400 truncate">{currentUser ? currentDept || "—" : "Klikni da odabereš"}</span>
+                <span className="block text-[13px] font-semibold text-slate-100 truncate">{currentUser || "Nalog nije povezan"}</span>
+                <span className="block text-[11px] text-slate-400 truncate">{currentUser ? currentDept || "—" : accountEmail || "—"}</span>
               </span>
-              <ChevronsUpDown size={15} className="text-slate-500 shrink-0" />
+              <Lock size={13} className="text-slate-500 shrink-0" />
             </button>
-            {pickerOpen && <UserPicker currentUser={currentUser} onChoose={onChooseUser} onClose={() => setPickerOpen(false)} />}
+            {pickerOpen && <UserInfo currentUser={currentUser} accountEmail={accountEmail} onClose={() => setPickerOpen(false)} />}
           </div>
           <div className="flex gap-1.5">
             <button onClick={onToggleTheme} className="flex-1 h-9 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-100 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
