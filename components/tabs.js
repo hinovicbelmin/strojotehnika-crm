@@ -1289,33 +1289,6 @@ function porodiceFirme(lic) {
   return PORODICE_LIC.filter((f) => m.has(f)).map((f) => { const g = m.get(f); return { ...g, isteklo: g.aktivnih === 0 }; });
 }
 const porodiceTekst = (lic) => porodiceFirme(lic).map((g) => `${g.f} ${fmtN(g.n)}`).join(" · ");
-// licence za detaljni prikaz: komponente paketa ("with …") i uloge tehničkog paketa spojene uz glavnu licencu
-function spojeneLicence(lic) {
-  const grupe = new Map();
-  for (const k of lic) {
-    const key = [k.serijski_broj || k.id, (k.naziv_proizvoda || "").trim(), k.start_date || "", k.end_date || ""].join("|");
-    if (!grupe.has(key)) grupe.set(key, { id: k.id, glavna: null, komponente: [], uloge: [], kom: 0, redovi: [] });
-    const g = grupe.get(key);
-    g.redovi.push(k);
-    g.kom = Math.max(g.kom, licKom(k));
-    const sub = (k.naziv_proizvoda_2 || "").trim();
-    if (TEHNICKI_PAKET.test(k.naziv_proizvoda || "")) { if (sub) g.uloge.push(sub); if (!g.glavna) g.glavna = k; }
-    else if (jeKomponenta(k)) g.komponente.push(sub.replace(/^with\s+/i, "").replace(/^SOLIDWORKS\s+/i, "").replace(/\s+Add-On$/i, ""));
-    else if (!g.glavna || jeKomponenta(g.glavna)) g.glavna = k;
-  }
-  // komponente s vlastitim serijskim brojem ("with …") pripoji glavnoj licenci istog paketa i perioda
-  const lista = [...grupe.values()];
-  const glavne = lista.filter((g) => g.glavna && !jeKomponenta(g.glavna));
-  const out = [];
-  for (const g of lista) {
-    if (g.glavna) { out.push(g); continue; }
-    const r0 = g.redovi[0];
-    const meta = glavne.find((x) => (x.glavna.naziv_proizvoda || "").trim() === (r0.naziv_proizvoda || "").trim() && x.glavna.start_date === r0.start_date && x.glavna.end_date === r0.end_date);
-    if (meta) meta.komponente.push(...g.komponente.filter((c) => !meta.komponente.includes(c)));
-    else out.push(g);
-  }
-  return out.map((g) => ({ ...g, glavna: g.glavna || g.redovi[0] }));
-}
 function dokle(dateStr) {
   if (!dateStr) return "—";
   const n = daysDiff(dateStr);
@@ -1632,7 +1605,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
     <div className="bg-white dark:bg-slate-900 border border-teal-100 dark:border-teal-900/60 rounded-xl px-3.5 pb-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2 py-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Licence · grupisano po porodici
+          Licence · {f.lic.length} {plural(f.lic.length, "stavka", "stavke", "stavki")} · po porodici
         </span>
         <span className="flex gap-2">
           {onViewCompany && (
@@ -1643,7 +1616,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
       </div>
       {porodiceFirme(f.lic).map((g) => {
         const [, dot, txt] = PORODICA_STIL[g.f] || PORODICA_STIL.Ostalo;
-        const redovi = spojeneLicence(f.lic.filter((k) => porodicaLicence(k) === g.f));
+        const redovi = f.lic.filter((k) => porodicaLicence(k) === g.f);
         return (
           <div key={g.f} className="mt-1">
             <div className="flex items-center gap-2 pt-2 pb-1.5">
@@ -1651,29 +1624,21 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
               <span className={"text-[11.5px] font-extrabold uppercase tracking-wider " + (g.isteklo ? "text-slate-400" : txt)}>{g.f} · {fmtN(g.n)} {plural(g.n, "licenca", "licence", "licenci")}</span>
               {g.isteklo && <span className="text-[11.5px] text-slate-400">· sve istekle</span>}
             </div>
-            {redovi.map((r) => {
-              const k = r.glavna;
-              const tehnicki = TEHNICKI_PAKET.test(k.naziv_proizvoda || "");
-              const sub = (k.naziv_proizvoda_2 || "").trim();
-              const pokaziSub = !tehnicki && sub && !jeKomponenta(k) && sub.toLowerCase() !== (k.naziv_proizvoda || "").trim().toLowerCase();
-              return (
-                <div key={r.id} className={"grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700 " + (k.end_date && daysDiff(k.end_date) < 0 ? "opacity-60" : "")}>
-                  <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
-                  <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
-                  <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
-                    {tehnicki ? "Tehnički paket za cloud (3DEXPERIENCE)" : (k.naziv_proizvoda || "—")}
-                    {jeSwAddIn(k) && <span className="ml-1.5 text-[10.5px] font-bold text-red-700 bg-red-50 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900 px-1.5 rounded">add-in</span>}
-                    {pokaziSub && <span className="text-slate-400 dark:text-slate-500 font-normal"> · {sub}</span>}
-                    {r.komponente.length > 0 && <span className="block text-xs text-slate-400 dark:text-slate-500 font-normal">uključuje: {r.komponente.join(", ")}</span>}
-                    {r.uloge.length > 0 && <span className="block text-xs text-slate-400 dark:text-slate-500 font-normal">uloge: {r.uloge.join(", ")}</span>}
-                    {k.napomena && <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal truncate" title={k.napomena}>{k.napomena}</span>}
-                  </span>
-                  <span className="text-[13px] text-slate-700 dark:text-slate-300">{r.kom} kom.</span>
-                  <PeriodBar start={k.start_date} end={k.end_date} />
-                  <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
-                </div>
-              );
-            })}
+            {redovi.map((k) => (
+              <div key={k.id} className={"grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[190px_minmax(0,1fr)_64px_190px_130px] gap-x-3.5 gap-y-1.5 items-center py-2 border-t border-dashed border-slate-200 dark:border-slate-700 " + (k.end_date && daysDiff(k.end_date) < 0 ? "opacity-60" : "")}>
+                <span className="font-mono text-xs text-slate-600 dark:text-slate-400 break-all">{k.serijski_broj || "— bez serijskog broja —"}</span>
+                <span className="lg:hidden justify-self-end"><LicPill status={licenseStatus(k.end_date).label} /></span>
+                <span className="text-[13px] text-slate-900 dark:text-slate-100 font-medium min-w-0">
+                  {k.naziv_proizvoda || "—"}
+                  {jeSwAddIn(k) && <span className="ml-1.5 text-[10.5px] font-bold text-red-700 bg-red-50 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900 px-1.5 rounded">add-in</span>}
+                  {k.naziv_proizvoda_2 && <span className="text-slate-400 dark:text-slate-500 font-normal"> · {k.naziv_proizvoda_2}</span>}
+                  {k.napomena && <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal truncate" title={k.napomena}>{k.napomena}</span>}
+                </span>
+                <span className="text-[13px] text-slate-700 dark:text-slate-300">{k.broj_licenci ?? "—"} kom.</span>
+                <PeriodBar start={k.start_date} end={k.end_date} />
+                <span className="hidden lg:block"><LicPill status={licenseStatus(k.end_date).label} /></span>
+              </div>
+            ))}
           </div>
         );
       })}
