@@ -6,7 +6,7 @@ import {
   ChevronRight, History, Users, FileSpreadsheet, CheckCircle2, Trash2, MapPin, Phone, Mail, Bell, User,
 } from "lucide-react";
 import {
-  COLLEAGUES, COLLEAGUE_NAMES, POTENCIJAL_STATUSI, EU_COUNTRIES,
+  COLLEAGUES, COLLEAGUE_NAMES, PRODAVAC_NAMES, POTENCIJAL_STATUSI, EU_COUNTRIES,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon, todayStr, fmtDate, downloadCSV, reminderUrgency,
   buildCompanyNameIndex, findCompanyMatch, companyKey,
 } from "../lib/crm";
@@ -18,7 +18,7 @@ import {
 
 export const NEDODIJELJENO = "Nedodijeljeno";
 const NEPOZNATA = "Nepoznata";
-const PRODAVACI = COLLEAGUES.filter((c) => c.dept === "Prodaja").map((c) => c.name);
+const PRODAVACI = PRODAVAC_NAMES;
 const DRZAVE_FILTER = [NEPOZNATA, ...EU_COUNTRIES];
 
 // Svi prodavači firme (glavni + dodatni), bez "Nedodijeljeno"
@@ -66,7 +66,7 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
   const [f, setF] = useState(() => {
     const base = {
       naziv_firme: "", grad: "", adresa: "", drzava: "", djelatnost: "", kontakt_osoba: "", kontakt_funkcija: "", telefon: "", email: "",
-      kolega: currentUser || "", prodavaci: [], status: "Novi kontakt", napomena: "",
+      kolega: PRODAVAC_NAMES.includes(currentUser) ? currentUser : "", prodavaci: [], status: "Novi kontakt", napomena: "",
       podsjetnik_datum: "", podsjetnik_opis: "", dodatni_kontakti: [], historija: [],
     };
     return initial ? { ...base, ...initial, prodavaci: initial.prodavaci || [], historija: initial.historija || [], dodatni_kontakti: initial.dodatni_kontakti || [] } : base;
@@ -147,7 +147,8 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
           <select className={inputCls} value={f.kolega} onChange={set("kolega")}>
             <option value="">— odaberi —</option>
             <option value={NEDODIJELJENO}>{NEDODIJELJENO}</option>
-            {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
+            {PRODAVAC_NAMES.map((n) => <option key={n}>{n}</option>)}
+            {f.kolega && f.kolega !== NEDODIJELJENO && !PRODAVAC_NAMES.includes(f.kolega) && <option key={f.kolega}>{f.kolega}</option>}
           </select>
         </Field>
       </div>
@@ -902,7 +903,7 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
         <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
           <select className="text-sm rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-white" value={bulkKolega} onChange={(e) => setBulkKolega(e.target.value)}>
             <option value="" className="text-slate-800">— odaberi prodavača —</option>
-            {COLLEAGUE_NAMES.map((n) => <option key={n} className="text-slate-800">{n}</option>)}
+            {PRODAVAC_NAMES.map((n) => <option key={n} className="text-slate-800">{n}</option>)}
             <option value={NEDODIJELJENO} className="text-slate-800">{NEDODIJELJENO}</option>
           </select>
           <button
