@@ -101,6 +101,12 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
     setNovi({ datum: todayStr(), kontakt: "", opis: "" });
   };
   const removeHistorija = (h) => setF({ ...f, historija: (f.historija || []).filter((x) => x !== h) });
+  const [urediH, setUrediH] = useState(null); // { h, opis }
+  const sacuvajHistoriju = () => {
+    if (!urediH || !urediH.opis.trim() || !currentUser || urediH.h.kolega !== currentUser) return;
+    setF({ ...f, historija: (f.historija || []).map((x) => (x === urediH.h ? { ...x, opis: urediH.opis.trim(), izmijenio: currentUser || "", izmijenjeno: todayStr() } : x)) });
+    setUrediH(null);
+  };
 
   const submit = async () => {
     if (!f.naziv_firme.trim() || !f.kolega || !currentUser) return;
@@ -234,9 +240,23 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
                     <strong className="text-slate-700 dark:text-slate-200">{h.datum ? fmtDate(h.datum) : "bez datuma"}</strong>
                     {h.kolega ? ` · ${h.kolega}` : ""}{h.kontakt ? ` · ${h.kontakt}` : ""}
                   </span>
-                  <button type="button" onClick={() => removeHistorija(h)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" title="Obriši zapis"><Trash2 size={13} /></button>
+                  <span className="flex items-center gap-2">
+                    {currentUser && h.kolega === currentUser && <button type="button" onClick={() => setUrediH({ h, opis: h.opis || "" })} className="text-slate-300 group-hover:text-slate-500 hover:!text-teal-700" title="Uredi zapis" aria-label="Uredi zapis"><Pencil size={13} /></button>}
+                    <button type="button" onClick={() => removeHistorija(h)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" title="Obriši zapis"><Trash2 size={13} /></button>
+                  </span>
                 </div>
-                <p className="text-slate-700 dark:text-slate-300 whitespace-pre-line mt-0.5">{h.opis}</p>
+                {urediH && urediH.h === h ? (
+                  <div className="mt-1.5 space-y-1.5">
+                    <textarea className={inputCls} rows={2} autoFocus value={urediH.opis} onChange={(e) => setUrediH({ ...urediH, opis: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setUrediH(null); } }} />
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className={btnSecondary + " !py-1 !px-2.5 text-xs"} onClick={() => setUrediH(null)}>Otkaži</button>
+                      <button type="button" className={btnPrimary + " !py-1 !px-2.5 text-xs"} onClick={sacuvajHistoriju} disabled={!urediH.opis.trim()}>Primijeni</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-slate-700 dark:text-slate-300 whitespace-pre-line mt-0.5">{h.opis}{h.izmijenjeno ? <span className="text-xs text-slate-400"> · izmijenjeno</span> : null}</p>
+                )}
               </div>
             ))}
           </div>
@@ -518,6 +538,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
   const [busy, setBusy] = useState(false);
   const [sveH, setSveH] = useState(false);
   const [sviK, setSviK] = useState(false);
+  const [uredi, setUredi] = useState(null); // { h, opis, datum } — zapis historije koji se uređuje
 
   const kontakti = kontaktiOf(p);
   const historija = useMemo(() => [...(p.historija || [])].sort((a, b) => (b.datum || "").localeCompare(a.datum || "")), [p.historija]);
@@ -534,6 +555,20 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
       await onUpdate(p.id, { historija: nova, zadnji_kontakt: maxDatum(nova), updated_by: currentUser, updated_at: new Date().toISOString() });
       setNovi("");
       setDatum(todayStr());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sacuvajIzmjenu = async () => {
+    if (!uredi || !uredi.opis.trim() || !currentUser || uredi.h.kolega !== currentUser) return;
+    setBusy(true);
+    try {
+      const nova = (p.historija || []).map((x) => (x === uredi.h
+        ? { ...x, opis: uredi.opis.trim(), datum: uredi.datum || x.datum, izmijenio: currentUser, izmijenjeno: todayStr() }
+        : x));
+      await onUpdate(p.id, { historija: nova, zadnji_kontakt: maxDatum(nova), updated_by: currentUser, updated_at: new Date().toISOString() });
+      setUredi(null);
     } finally {
       setBusy(false);
     }
@@ -661,13 +696,40 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
               <li key={i} className="relative flex gap-3 pb-4 last:pb-0">
                 {i < shownH.length - 1 && <span className="absolute left-[13px] top-8 bottom-0 w-0.5 bg-slate-100 dark:bg-slate-800" />}
                 <Avatar name={h.kolega || "?"} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    <span className="font-semibold text-slate-800 dark:text-slate-100">{h.kolega || "—"}</span>
-                    {" · "}{h.datum ? fmtDate(h.datum) : "bez datuma"}
-                    {h.kontakt ? <span className="text-slate-400"> · {h.kontakt}</span> : null}
+                <div className="min-w-0 flex-1 group">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">{h.kolega || "—"}</span>
+                      {" · "}{h.datum ? fmtDate(h.datum) : "bez datuma"}
+                      {h.kontakt ? <span className="text-slate-400"> · {h.kontakt}</span> : null}
+                      {h.izmijenjeno ? <span className="text-slate-400" title={`Izmijenio: ${h.izmijenio || "—"}, ${fmtDate(h.izmijenjeno)}`}> · izmijenjeno</span> : null}
+                    </div>
+                    {currentUser && h.kolega === currentUser && !(uredi && uredi.h === h) && (
+                      <button type="button" onClick={() => setUredi({ h, opis: h.opis || "", datum: h.datum || "" })}
+                        className="shrink-0 -mt-0.5 p-1 rounded-md text-slate-300 dark:text-slate-600 group-hover:text-slate-500 hover:!text-teal-700 dark:hover:!text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        title="Uredi zapis" aria-label="Uredi zapis">
+                        <Pencil size={13} />
+                      </button>
+                    )}
                   </div>
-                  <p className="text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line mt-0.5 break-words">{h.opis}</p>
+                  {uredi && uredi.h === h ? (
+                    <div className="mt-1.5 space-y-2">
+                      <textarea aria-label="Uredi zapis historije" className={inputCls + " !py-1.5 text-[13px]"} rows={3} autoFocus value={uredi.opis}
+                        onChange={(e) => setUredi({ ...uredi, opis: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") { e.stopPropagation(); setUredi(null); }
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sacuvajIzmjenu();
+                        }} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input type="date" aria-label="Datum zapisa" className={inputCls + " !py-1 !w-[138px] text-[13px]"} value={uredi.datum} onChange={(e) => setUredi({ ...uredi, datum: e.target.value })} />
+                        <span className="flex-1" />
+                        <button type="button" className={btnSecondary + " !py-1 !px-2.5 text-[12.5px]"} onClick={() => setUredi(null)} disabled={busy}>Otkaži</button>
+                        <button type="button" className={btnPrimary + " !py-1 !px-2.5 text-[12.5px]"} onClick={sacuvajIzmjenu} disabled={busy || !uredi.opis.trim()}>{busy ? "Čuvam..." : "Sačuvaj"}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line mt-0.5 break-words">{h.opis}</p>
+                  )}
                 </div>
               </li>
             ))}
