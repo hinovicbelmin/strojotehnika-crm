@@ -15,6 +15,7 @@ import { Avatar, StatusPill, FilterPill, PanelLabel, headerBtnSec, fmtN } from "
 
 // Ko smije mijenjati cjenovnik (dodaj ime ako treba još neko)
 export const CJENOVNIK_ADMINI = ["Belmin Hinović"];
+const OZNAKE_RED = ["PLC", "ALC", "YLC", "YSC", "QLC"];
 export const MIN_ZARADA_PCT = 10; // upozorenje ako stavka padne ispod ovog % zarade
 const OZNAKE = [
   { k: "PLC", opis: "trajna licenca" },
@@ -182,8 +183,20 @@ function DodajProizvod({ cjenovnik, onPick }) {
   const pogodci = useMemo(() => {
     const aktivniP = cjenovnik.filter((p) => p.aktivan !== false);
     const t = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const lista = t.length ? aktivniP.filter((p) => t.every((w) => `${p.naziv} ${p.oznaka} ${p.grupa} ${p.opis}`.toLowerCase().includes(w))) : aktivniP;
-    return lista.slice(0, 10);
+    const lista = t.length ? aktivniP.filter((p) => t.every((w) => `${p.naziv} ${p.oznaka} ${p.grupa} ${p.opis}`.toLowerCase().includes(w))) : [...aktivniP];
+    // Rangiranje: tačan naziv > naziv počinje upitom > upit je cijeli niz u nazivu > ostalo; pa PLC, ALC, YLC, YSC; pa abecedno
+    const fraza = t.filter((w) => !OZNAKE_RED.includes(w.toUpperCase())).join(" ");
+    const rang = (p) => {
+      const n = (p.naziv || "").toLowerCase();
+      if (!fraza) return 3;
+      if (n === fraza) return 0;
+      if (n.startsWith(fraza + " ") || n.startsWith(fraza)) return n.split(/\s+/).length === fraza.split(/\s+/).length ? 0 : 1;
+      if (n.includes(fraza)) return 2;
+      return 3;
+    };
+    const redOz = (o) => { const i = OZNAKE_RED.indexOf((o || "").toUpperCase()); return i < 0 ? 9 : i; };
+    lista.sort((a, b) => rang(a) - rang(b) || (a.naziv || "").length - (b.naziv || "").length || (a.naziv || "").localeCompare(b.naziv || "", "hr") || redOz(a.oznaka) - redOz(b.oznaka));
+    return lista.slice(0, 40);
   }, [q, cjenovnik]);
   useEffect(() => { setAktivni(0); }, [q]);
   const imaAlc = (p) => p.oznaka === "PLC" && cjenovnik.some((x) => x.aktivan !== false && x.oznaka === "ALC" && x.naziv === p.naziv);
