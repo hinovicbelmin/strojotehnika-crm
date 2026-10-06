@@ -9,7 +9,7 @@ import {
   AlarmClock, History, Sun, Check, FileText,
 } from "lucide-react";
 import {
-  COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
+  COLLEAGUE_NAMES, PRODAJA_MARKETING_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
   FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
@@ -536,7 +536,7 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
   const [f, setF] = useState(
     initial || {
       naziv_firme: "", grad: "", drzava: "", kontakt_osoba: "", telefon: "", email: "",
-      izvor: "", kolega: currentUser || "", status: "Novi", napomena: "",
+      izvor: "", kolega: PRODAJA_MARKETING_NAMES.includes(currentUser) ? currentUser : "", status: "Novi", napomena: "",
       podsjetnik_datum: "", podsjetnik_opis: "", postao_kupac: false,
     }
   );
@@ -577,7 +577,8 @@ function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
         <Field label="Kolega" required>
           <select className={inputCls} value={f.kolega} onChange={set("kolega")}>
             <option value="">— odaberi —</option>
-            {COLLEAGUE_NAMES.map((n) => <option key={n}>{n}</option>)}
+            {PRODAJA_MARKETING_NAMES.map((n) => <option key={n}>{n}</option>)}
+            {f.kolega && !PRODAJA_MARKETING_NAMES.includes(f.kolega) && <option key={f.kolega}>{f.kolega}</option>}
           </select>
         </Field>
         <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
@@ -2643,7 +2644,7 @@ function ZavrsiPanel({ item, currentUser, onCancel, onDone }) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-green-200 dark:border-green-900/60 rounded-xl p-3.5 flex flex-col gap-3">
       <div className="flex items-center gap-2 text-[11.5px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
-        <History size={14} /> {item.tip === "Potencijal" ? "Zapiši u historiju firme" : "Zapiši u napomenu leada"}
+        <History size={14} /> {item.tip === "Potencijal" ? "Zapiši u historiju firme" : item.tip === "Akcija" ? "Zapiši u akciju i historiju firme" : "Zapiši u napomenu leada"}
       </div>
       <textarea className={inputCls} rows={2} value={biljeska} onChange={(e) => setBiljeska(e.target.value)} autoFocus
         placeholder="Šta je dogovoreno? (nije obavezno)" />
@@ -2752,7 +2753,7 @@ function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) 
   );
 }
 
-export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onClear, onPatch, onViewCompany }) {
+export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], currentUser, onClear, onPatch, onViewCompany }) {
   const [mod, setMod] = useState(currentUser ? "moji" : "tim");
   const [fKolega, setFKolega] = useState("Svi");
   const [fTip, setFTip] = useState("Svi");
@@ -2779,7 +2780,22 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onC
       key: "L" + l.id, tip: "Lead", rec: l, naziv: l.naziv_firme || "—", status: l.status, vlasnik: l.kolega || "Nedodijeljeno",
       kontakt: l.kontakt_osoba || "", telefon: l.telefon || "", email: l.email || "",
     })),
-  ], [potencijali, lidovi]);
+    // podsjetnici iz Akcija (firma u akciji) — kontakt se preuzima iz Baze potencijala
+    ...(() => {
+      const rows = akcijeFirme.filter((r) => r.podsjetnik_datum);
+      if (!rows.length) return [];
+      const naziv = new Map(akcije.map((a) => [a.id, a.naziv]));
+      const pot = new Map();
+      potencijali.forEach((p) => { const k = companyKey(p.naziv_firme); if (k && !pot.has(k)) pot.set(k, p); });
+      return rows.map((r) => {
+        const p = pot.get(r.firma_key) || {};
+        return {
+          key: "A" + r.id, tip: "Akcija", akcija: naziv.get(r.akcija_id) || "", rec: r, naziv: r.firma || "—", status: r.status, vlasnik: r.prodavac || "Nedodijeljeno",
+          kontakt: p.kontakt_osoba || "", telefon: p.telefon || "", email: p.email || "",
+        };
+      });
+    })(),
+  ], [potencijali, lidovi, akcije, akcijeFirme]);
   const svi = useMemo(() => zapisi
     .filter((z) => z.rec.podsjetnik_datum)
     .map((z) => ({ ...z, datum: String(z.rec.podsjetnik_datum).slice(0, 10), opis: z.rec.podsjetnik_opis || "" }))
@@ -2854,7 +2870,9 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onC
   const zavrsi = async (r, { biljeska, sljedeci, opis }) => {
     const patch = { podsjetnik_datum: sljedeci || null, podsjetnik_opis: sljedeci ? opis : "" };
     if (biljeska) {
-      if (r.tip === "Potencijal") {
+      if (r.tip === "Akcija") {
+        patch._zapis = { datum: danasIso(), kolega: currentUser, opis: r.opis ? `${r.opis}: ${biljeska}` : biljeska };
+      } else if (r.tip === "Potencijal") {
         const zapis = { datum: danasIso(), kolega: currentUser, kontakt: r.kontakt || "", opis: r.opis ? `${r.opis}: ${biljeska}` : biljeska };
         const nova = [zapis, ...(r.rec.historija || [])];
         patch.historija = nova;
@@ -2875,8 +2893,8 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onC
 
   // ---------- grupe ----------
   const grupe = P_SEKCIJE.map((k) => ({ key: k, items: lista.filter((r) => sekcijaPodsjetnika(r.datum) === k) })).filter((g) => g.items.length);
-  const tipChip = (tip) => (
-    <span className={"text-[11px] font-semibold px-1.5 py-px rounded-md " + (tip === "Lead" ? "bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{tip}</span>
+  const tipChip = (tip, akcija) => (
+    <span title={akcija ? `Akcija: ${akcija}` : undefined} className={"text-[11px] font-semibold px-1.5 py-px rounded-md max-w-[220px] truncate " + (tip === "Lead" ? "bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : tip === "Akcija" ? "bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{tip === "Akcija" && akcija ? `Akcija · ${akcija}` : tip}</span>
   );
   const filtriran = fTip !== "Svi" || fStatus !== "Svi" || fRok !== "Sve" || fDan || qq || (mod === "tim" && fKolega !== "Svi");
   const ocisti = () => { setFTip("Svi"); setFStatus("Svi"); setFRok("Sve"); setFDan(null); setQ(""); setFKolega("Svi"); };
@@ -2928,7 +2946,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onC
             </div>
             <div className="w-full sm:w-56 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, opis..." /></div>
             {mod === "tim" && <FilterPill label="Kolega" value={fKolega} defaultValue="Svi" onChange={setFKolega} options={["Svi", ...tim.map(([n]) => n)]} />}
-            <FilterPill label="Tip" value={fTip} defaultValue="Svi" onChange={setFTip} options={["Svi", "Potencijal", "Lead"]} />
+            <FilterPill label="Tip" value={fTip} defaultValue="Svi" onChange={setFTip} options={["Svi", "Potencijal", "Lead", ...(akcijeFirme.some((r) => r.podsjetnik_datum) ? ["Akcija"] : [])]} />
             <FilterPill label="Status" value={fStatus} defaultValue="Svi" onChange={setFStatus} options={["Svi", ...statusi]} />
             {fDan && (
               <span className="inline-flex items-center h-9 rounded-lg border border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-700 dark:bg-teal-900/30 dark:text-teal-200 text-[13px] pl-3">
@@ -2987,7 +3005,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], currentUser, onC
                                   <ExternalLink size={12} />
                                 </button>
                               )}
-                              {tipChip(r.tip)}
+                              {tipChip(r.tip, r.akcija)}
                               {r.status && <StatusPill status={r.status} />}
                             </div>
                             <div className="text-[13.5px] text-slate-700 dark:text-slate-300 mt-0.5">{r.opis || <span className="text-slate-400">Podsjetnik</span>}</div>
