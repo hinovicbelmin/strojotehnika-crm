@@ -380,7 +380,9 @@ export function KalkulatorTab({ cjenovnik = [], kalkulacije = [], potencijali = 
   const ranije = useMemo(() => {
     const key = companyKey(k.firma);
     if (!key) return [];
-    return kalkulacije.filter((x) => companyKey(x.firma) === key && x.id !== k.id).sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")));
+    // uključuje i trenutno otvorenu (spremljenu) kalkulaciju — označena je kao "otvorena"
+    return kalkulacije.filter((x) => companyKey(x.firma) === key)
+      .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
   }, [kalkulacije, k.firma, k.id]);
 
   // ---------- spremljene ----------
@@ -598,14 +600,18 @@ export function KalkulatorTab({ cjenovnik = [], kalkulacije = [], potencijali = 
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
                 <PanelLabel>Ranije kalkulacije za ovu firmu</PanelLabel>
                 {!k.firma.trim() ? <p className="text-xs text-slate-400">Odaberi kupca da vidiš ranije kalkulacije.</p>
-                  : ranije.length === 0 ? <p className="text-xs text-slate-400">Nema ranijih kalkulacija za ovu firmu.</p>
+                  : ranije.length === 0 ? <p className="text-xs text-slate-400">Nema spremljenih kalkulacija za ovu firmu.</p>
                   : ranije.slice(0, 6).map((x) => {
                     const zp = broj(x.ukupno_kupac) > 0 ? (broj(x.zarada) / broj(x.ukupno_kupac)) * 100 : 0;
+                    const ova = x.id === k.id;
                     return (
-                      <button key={x.id} type="button" onClick={() => otvori(x)}
-                        className="w-full text-left flex items-center gap-2.5 py-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg -mx-1.5 px-1.5">
+                      <button key={x.id} type="button" onClick={() => { if (!ova) otvori(x); }} aria-current={ova ? "true" : undefined}
+                        className={"w-full text-left flex items-center gap-2.5 py-2 border-t border-slate-100 dark:border-slate-800 first:border-t-0 rounded-lg -mx-1.5 px-1.5 " + (ova ? "bg-teal-50/70 dark:bg-teal-900/20 cursor-default" : "hover:bg-slate-50 dark:hover:bg-slate-800/50")}>
                         <span className="flex-1 min-w-0">
-                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{x.naziv || "Kalkulacija"}</span>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{x.naziv || "Kalkulacija"}</span>
+                            {ova && <span className="shrink-0 text-[10.5px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-100 dark:bg-teal-900/50 px-1.5 rounded-full">{k._izmjena ? "otvorena · nesačuvane izmjene" : "otvorena"}</span>}
+                          </span>
                           <span className="block text-[11.5px] text-slate-500 dark:text-slate-400">{fmtDate(x.datum)} · {x.prodavac || "—"}</span>
                         </span>
                         <span className="text-right shrink-0">
