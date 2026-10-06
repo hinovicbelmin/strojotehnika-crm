@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
-  Calculator, Tags, ArrowUpCircle,
+  Calculator, Tags, ArrowUpCircle, Megaphone,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
   COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, upsertRows, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
-  getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost,
+  getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost, companyKey,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
@@ -16,7 +16,8 @@ import {
 } from "../components/tabs";
 import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
-import { KalkulatorTab, CjenovnikTab } from "../components/kalkulator";
+import { KalkulatorTab, CjenovnikTab, praznaKalkulacija } from "../components/kalkulator";
+import { AkcijeTab } from "../components/akcije";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
@@ -31,6 +32,7 @@ const TABS = [
   { id: "lidovi", label: "Lidovi", icon: TrendingUp },
   { id: "kalkulator", label: "Kalkulator zarade", icon: Calculator },
   { id: "cjenovnik", label: "Cjenovnik", icon: Tags },
+  { id: "akcije", label: "Akcije", icon: Megaphone },
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
   { id: "nadogradnje", label: "Nadogradnje", icon: ArrowUpCircle },
@@ -38,7 +40,7 @@ const TABS = [
 ];
 
 // Tabovi kojima tehničari nemaju pristup (vidljivi, ali "zaleđeni")
-const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi", "kalkulator", "cjenovnik"];
+const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi", "kalkulator", "cjenovnik", "akcije"];
 
 const CACHE_KEY = "crm_data_cache_v1";
 
@@ -71,6 +73,8 @@ export default function HomePage() {
   const [nadKampanje, setNadKampanje] = useState([]);
   const [nadLicence, setNadLicence] = useState([]);
   const [nadFirme, setNadFirme] = useState([]);
+  const [akcije, setAkcije] = useState([]);
+  const [akcijeFirme, setAkcijeFirme] = useState([]);
 
   // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
   const primijeniKorisnika = (user) => {
@@ -130,6 +134,8 @@ export default function HomePage() {
         setNadKampanje(cached.nadKampanje || []);
         setNadLicence(cached.nadLicence || []);
         setNadFirme(cached.nadFirme || []);
+        setAkcije(cached.akcije || []);
+        setAkcijeFirme(cached.akcijeFirme || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -146,6 +152,8 @@ export default function HomePage() {
       setNadKampanje(all.nadKampanje || []);
       setNadLicence(all.nadLicence || []);
       setNadFirme(all.nadFirme || []);
+      setAkcije(all.akcije || []);
+      setAkcijeFirme(all.akcijeFirme || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -154,8 +162,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -441,6 +449,7 @@ export default function HomePage() {
       const rec = await insertRow("forecast", payload);
       setForecast((prev) => [rec, ...prev]);
       showToast("Forecast stavka sačuvana");
+      return rec;
     } catch (e) {
       showToast("Greška pri čuvanju forecast stavke", "error");
       throw e;
@@ -542,6 +551,10 @@ export default function HomePage() {
 
   /* ---------------- Podsjetnici handler ---------------- */
   const clearReminder = async (item) => {
+    if (item.tip === "Akcija") {
+      await updateAkcijaFirma(item.id, { podsjetnik_datum: null, podsjetnik_opis: null }, "Podsjetnik označen kao obavljen");
+      return;
+    }
     try {
       const table = item.tip === "Potencijal" ? "potencijali" : "lidovi";
       const rec = await updateRow(table, item.id, {
@@ -668,8 +681,148 @@ export default function HomePage() {
     }
   };
 
+  /* ---------------- Akcije ---------------- */
+  const akcijaRedovi = (a, firme) => {
+    const ts = new Date().toISOString();
+    return firme.map((k) => ({
+      akcija_id: a.id, firma: k.firma, firma_key: k.key || companyKey(k.firma), drzava: k.drzava || null,
+      prodavac: k.prodavac || null, status: "Nije kontaktirana", licence: k.licence || null,
+      broj_licenci: k.broj_licenci != null ? k.broj_licenci : null, odrzavanje_do: k.odrzavanje_do || null, historija: [],
+      created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts,
+    })).filter((r) => r.firma_key);
+  };
+  const saveAkcija = async (id, payload, firme) => {
+    const ts = new Date().toISOString();
+    try {
+      if (id) {
+        const rec = await updateRow("akcije", id, { ...payload, updated_by: currentUser || "—", updated_at: ts });
+        setAkcije((prev) => prev.map((a) => (a.id === id ? rec : a)));
+        showToast("zavrsena" in payload ? (payload.zavrsena ? "Akcija završena" : "Akcija vraćena u aktivne") : "Akcija sačuvana");
+        return rec;
+      }
+      const rec = await insertRow("akcije", { ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+      setAkcije((prev) => [rec, ...prev]);
+      let n = 0;
+      if (firme && firme.length) {
+        try {
+          const ins = await upsertRows("akcije_firme", akcijaRedovi(rec, firme), "akcija_id,firma_key", { ignoreDuplicates: true });
+          setAkcijeFirme((prev) => [...ins, ...prev]);
+          n = ins.length;
+        } catch (e) {
+          showToast("Akcija je napravljena, ali firme nisu upisane — pokušaj „Dodaj firme“", "error");
+          return rec;
+        }
+      }
+      showToast(`Akcija napravljena · ${n} firmi`);
+      return rec;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju akcije", "error");
+      return null;
+    }
+  };
+  const deleteAkcija = (id) => {
+    const item = akcije.find((a) => a.id === id);
+    if (!item) return;
+    const firme = akcijeFirme.filter((r) => r.akcija_id === id);
+    setAkcije((prev) => prev.filter((a) => a.id !== id));
+    setAkcijeFirme((prev) => prev.filter((r) => r.akcija_id !== id));
+    scheduleUndoDelete(
+      item.naziv || "akcija",
+      () => { setAkcije((prev) => [item, ...prev]); setAkcijeFirme((prev) => [...firme, ...prev]); },
+      () => deleteRow("akcije", id)
+    );
+  };
+  const addAkcijeFirme = async (a, firme) => {
+    try {
+      const ins = await upsertRows("akcije_firme", akcijaRedovi(a, firme), "akcija_id,firma_key", { ignoreDuplicates: true });
+      setAkcijeFirme((prev) => [...ins, ...prev]);
+      showToast(`Dodano ${ins.length} firmi u akciju`);
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri dodavanju firmi u akciju", "error");
+      throw e;
+    }
+  };
+  // izmjena firme u akciji; zapis = { datum, kolega, opis } ide u historiju akcije i (ako firma postoji) u Bazu potencijala
+  const updateAkcijaFirma = async (id, patch, poruka, { zapis } = {}) => {
+    const row = akcijeFirme.find((r) => r.id === id);
+    if (!row) return null;
+    const ts = new Date().toISOString();
+    const p = { ...patch, updated_by: currentUser || "—", updated_at: ts };
+    const novaH = [];
+    if (zapis && zapis.opis) novaH.push({ datum: zapis.datum || todayStr(), kolega: zapis.kolega || currentUser || "", opis: zapis.opis });
+    if (patch.status && patch.status !== row.status) novaH.push({ datum: todayStr(), kolega: currentUser || "", status: patch.status });
+    if (novaH.length) {
+      const h = [...novaH, ...(row.historija || [])];
+      p.historija = h;
+      p.zadnji_kontakt = h.filter((x) => x.opis).reduce((m, x) => (x.datum && (!m || x.datum > m) ? x.datum : m), null);
+    }
+    if (zapis && zapis.opis && (patch.status === undefined) && row.status === "Nije kontaktirana") {
+      p.status = "Kontaktirana";
+      p.historija = [{ datum: todayStr(), kolega: currentUser || "", status: "Kontaktirana" }, ...(p.historija || [])];
+    }
+    try {
+      const rec = await updateRow("akcije_firme", id, p);
+      setAkcijeFirme((prev) => prev.map((r) => (r.id === id ? rec : r)));
+      if (zapis && zapis.opis) {
+        const akc = akcije.find((a) => a.id === row.akcija_id);
+        const pots = potencijali.filter((x) => companyKey(x.naziv_firme) === row.firma_key);
+        const pot = pots.find((x) => x.kolega && x.kolega !== "Nedodijeljeno") || pots[0];
+        if (pot) {
+          try {
+            const hz = { datum: zapis.datum || todayStr(), kolega: zapis.kolega || currentUser || "", kontakt: "", opis: zapis.opis, akcija: akc ? akc.naziv : "Akcija", akcija_id: row.akcija_id };
+            const nova = [hz, ...(pot.historija || [])];
+            const zk = nova.reduce((m, x) => (x.datum && (!m || x.datum > m) ? x.datum : m), null);
+            const recP = await updateRow("potencijali", pot.id, { historija: nova, zadnji_kontakt: zk, updated_by: currentUser || "—", updated_at: ts });
+            setPotencijali((prev) => prev.map((x) => (x.id === pot.id ? recP : x)));
+          } catch (e) {
+            console.error(e);
+            showToast("Zapis je u akciji, ali nije upisan u Bazu potencijala", "error");
+            return rec;
+          }
+        }
+      }
+      showToast(poruka || "Sačuvano");
+      return rec;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju firme u akciji", "error");
+      throw e;
+    }
+  };
+  const removeAkcijaFirma = (r) => {
+    const item = akcijeFirme.find((x) => x.id === r.id);
+    if (!item) return;
+    setAkcijeFirme((prev) => prev.filter((x) => x.id !== r.id));
+    scheduleUndoDelete(
+      `${item.firma} (iz akcije)`,
+      () => setAkcijeFirme((prev) => [item, ...prev]),
+      () => deleteRow("akcije_firme", r.id)
+    );
+  };
+  const akcijaUForecast = async (r, payload, vrijednost) => {
+    const ts = new Date().toISOString();
+    const rec = await addForecast({ ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+    const patch = { forecast_id: rec.id };
+    if (vrijednost != null) patch.vrijednost = vrijednost;
+    if (r.status === "Nije kontaktirana" || r.status === "Kontaktirana") patch.status = "Zainteresovana";
+    await updateAkcijaFirma(r.id, patch, "Prebačeno u forecast");
+  };
+  const otvoriKalkulator = (r, a) => {
+    if (kalkNacrt && kalkNacrt._izmjena && !window.confirm("Otvorena kalkulacija ima nespremljene izmjene. Otvoriti novu za ovu firmu?")) return;
+    const pot = potencijali.find((x) => companyKey(x.naziv_firme) === r.firma_key);
+    setKalkNacrt({ ...praznaKalkulacija(currentUser), firma: pot ? pot.naziv_firme : r.firma, naziv: `${a.naziv} — ${r.firma}`, napomena: a.ponuda || "" });
+    setTab("kalkulator");
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
+    if (tip === "Akcija") {
+      const { _zapis, ...ostalo } = patch;
+      await updateAkcijaFirma(id, ostalo, poruka || "Podsjetnik sačuvan", _zapis ? { zapis: _zapis } : {});
+      return;
+    }
     try {
       const table = tip === "Potencijal" ? "potencijali" : "lidovi";
       const rec = await updateRow(table, id, { ...patch, updated_by: currentUser || "—", updated_at: new Date().toISOString() });
@@ -696,7 +849,8 @@ export default function HomePage() {
   const tekuciMjesec = currentMonthStr();
   const navBadges = {
     podsjetnici: {
-      count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length,
+      count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length
+        + akcijeFirme.filter((r) => r.podsjetnik_datum && daysDiff(String(r.podsjetnik_datum).slice(0, 10)) <= 0).length,
       tone: "alert", hint: "za danas / kasni",
     },
     kupci: {
@@ -709,6 +863,13 @@ export default function HomePage() {
     nadogradnje: {
       count: nadogradnjeBadge(nadModel),
       tone: "warn", hint: "firmi za nadogradnju — održavanje ističe ≤30 dana",
+    },
+    akcije: {
+      count: (() => {
+        const aktivne = new Set(akcije.filter((a) => !a.zavrsena && (!a.kraj || daysDiff(String(a.kraj).slice(0, 10)) >= 0)).map((a) => a.id));
+        return akcijeFirme.filter((r) => aktivne.has(r.akcija_id) && r.prodavac === currentUser && (r.status || "Nije kontaktirana") === "Nije kontaktirana").length;
+      })(),
+      tone: "muted", hint: "tvojih firmi čeka kontakt u aktivnim akcijama",
     },
     lidovi: {
       count: lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length,
@@ -868,6 +1029,27 @@ export default function HomePage() {
                   onBulkImport={bulkImportCjenovnik}
                 />
               )}
+              {tab === "akcije" && (
+                <AkcijeTab
+                  akcije={akcije}
+                  akcijeFirme={akcijeFirme}
+                  kupci={kupci}
+                  potencijali={potencijali}
+                  forecast={forecast}
+                  kalkulacije={kalkulacije}
+                  currentUser={currentUser}
+                  onSaveAkcija={saveAkcija}
+                  onDeleteAkcija={deleteAkcija}
+                  onAddFirme={addAkcijeFirme}
+                  onUpdateFirma={(r, patch, poruka) => updateAkcijaFirma(r.id, patch, poruka || (patch.status ? `Status: ${patch.status}` : "Sačuvano")).catch(() => null)}
+                  onZapis={(r, zapis) => updateAkcijaFirma(r.id, {}, "Zapis dodan", { zapis })}
+                  onForecast={akcijaUForecast}
+                  onRemoveFirma={removeAkcijaFirma}
+                  onKalkulator={otvoriKalkulator}
+                  onViewCompany={setViewingCompany}
+                  showToast={showToast}
+                />
+              )}
               {tab === "kupci" && (
                 <KupciTab
                   data={kupci}
@@ -933,6 +1115,8 @@ export default function HomePage() {
                 <PodsjetniciTab
                   potencijali={potencijali}
                   lidovi={lidovi}
+                  akcije={akcije}
+                  akcijeFirme={akcijeFirme}
                   currentUser={currentUser}
                   onClear={clearReminder}
                   onPatch={patchReminderRecord}
