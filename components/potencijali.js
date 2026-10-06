@@ -240,6 +240,7 @@ function PotencijalForm({ initial, currentUser, existingList, onSave, onClose })
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     <strong className="text-slate-700 dark:text-slate-200">{h.datum ? fmtDate(h.datum) : "bez datuma"}</strong>
                     {h.kolega ? ` · ${h.kolega}` : ""}{h.kontakt ? ` · ${h.kontakt}` : ""}
+                    {h.akcija ? <span className="ml-1.5 text-[10.5px] font-bold text-teal-700 bg-teal-50 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 py-px rounded-full" title={`Upisano iz akcije: ${h.akcija}`}>{h.akcija}</span> : null}
                   </span>
                   <span className="flex items-center gap-2">
                     {currentUser && h.kolega === currentUser && <button type="button" onClick={() => setUrediH({ h, opis: h.opis || "" })} className="text-slate-300 group-hover:text-slate-500 hover:!text-teal-700" title="Uredi zapis" aria-label="Uredi zapis"><Pencil size={13} /></button>}
@@ -704,6 +705,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
                       {" · "}{h.datum ? fmtDate(h.datum) : "bez datuma"}
                       {h.kontakt ? <span className="text-slate-400"> · {h.kontakt}</span> : null}
                       {h.izmijenjeno ? <span className="text-slate-400" title={`Izmijenio: ${h.izmijenio || "—"}, ${fmtDate(h.izmijenjeno)}`}> · izmijenjeno</span> : null}
+                      {h.akcija ? <span className="ml-1.5 text-[10.5px] font-bold text-teal-700 bg-teal-50 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 py-px rounded-full" title={`Upisano iz akcije: ${h.akcija}`}>{h.akcija}</span> : null}
                     </div>
                     {currentUser && h.kolega === currentUser && !(uredi && uredi.h === h) && (
                       <button type="button" onClick={() => setUredi({ h, opis: h.opis || "", datum: h.datum || "" })}
