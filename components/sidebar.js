@@ -7,7 +7,7 @@ import { COLLEAGUES } from "../lib/crm";
 const GROUPS = [
   { label: null, items: ["pregled"] },
   { label: "Prodaja", items: ["forecast", "potencijali", "lidovi", "akcije", "kalkulator", "cjenovnik"] },
-  { label: "Kupci i podrška", items: ["kupci", "podrska", "nadogradnje"] },
+  { label: "Kupci i podrška", items: ["kupci", "podrska", "nadogradnje", "kontakti"] },
   { label: "Moj dan", items: ["podsjetnici"] },
 ];
 
