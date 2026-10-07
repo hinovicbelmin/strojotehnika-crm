@@ -17,6 +17,7 @@ import {
   COLLEAGUES, companyKey,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
+import { PrijedlogKartica } from "./kontakti";
 import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, relDate, fmtN, headerBtnSec } from "./crmBits";
 import { NadogradnjaBadge } from "./nadogradnje";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
@@ -2753,7 +2754,8 @@ function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) 
   );
 }
 
-export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], currentUser, onClear, onPatch, onViewCompany }) {
+export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], kontaktPrijedlozi = [], onResolvePrijedlog, currentUser, onClear, onPatch, onViewCompany }) {
+  const [sviPrijedlozi, setSviPrijedlozi] = useState(false);
   const [mod, setMod] = useState(currentUser ? "moji" : "tim");
   const [fKolega, setFKolega] = useState("Svi");
   const [fTip, setFTip] = useState("Svi");
@@ -2934,6 +2936,31 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
         <KpiTile icon={Clock} label="Kasnije" value={nKasnije} active={fRok === "Kasnije"} onClick={() => toggleRok("Kasnije")}
           sub="sljedeća sedmica i dalje" />
       </div>
+
+      {/* ---------- prijedlozi kontakata od tehničke podrške ---------- */}
+      {(() => {
+        const pp = kontaktPrijedlozi.filter((x) => x.status === "Na čekanju" &&
+          (mod === "moji" ? x.prodavac === currentUser || !x.prodavac : fKolega === "Svi" || (x.prodavac || "Nedodijeljeno") === fKolega))
+          .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+        if (!pp.length) return null;
+        const prik = sviPrijedlozi ? pp : pp.slice(0, 3);
+        return (
+          <div className="mb-4 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-2xl p-4">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">Prijedlozi kontakata od tehničke podrške · {pp.length}</span>
+              <span className="text-[11.5px] text-slate-500 dark:text-slate-400">potvrdi ili odbaci — kontakt se mijenja u Bazi potencijala</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {prik.map((pr) => <PrijedlogKartica key={pr.id} pr={pr} showFirma canResolve={!!currentUser && !!onResolvePrijedlog} onResolve={onResolvePrijedlog} onViewCompany={onViewCompany} />)}
+            </div>
+            {pp.length > 3 && (
+              <button type="button" onClick={() => setSviPrijedlozi(!sviPrijedlozi)} className="mt-2 text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline">
+                {sviPrijedlozi ? "Prikaži manje" : `Prikaži sve (${pp.length})`}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="xl:flex xl:items-start xl:gap-4">
         <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
