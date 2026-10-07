@@ -15,6 +15,7 @@ import {
   Avatar, AvatarStack, StatusPill, FilterPill, ViewChip, MenuButton, SortHead, PageNav, PanelLabel,
   initials, daysAgo, relDate, ageCls, fmtN, headerBtnSec,
 } from "./crmBits";
+import { PrijedlogKartica } from "./kontakti";
 
 export const NEDODIJELJENO = "Nedodijeljeno";
 const NEPOZNATA = "Nepoznata";
@@ -534,7 +535,7 @@ function kontaktiOf(p) {
 const firstOf = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)[0] || "";
 
 /* ---------- Bočni panel firme ---------- */
-function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onViewCompany }) {
+function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onViewCompany, prijedlozi = [], onResolvePrijedlog }) {
   const [novi, setNovi] = useState("");
   const [datum, setDatum] = useState(todayStr());
   const [busy, setBusy] = useState(false);
@@ -646,6 +647,12 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
       {/* kontakti */}
       <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
         <PanelLabel>Kontakti · {kontakti.length}</PanelLabel>
+        {prijedlozi.length > 0 && (
+          <div className="space-y-2 mb-3">
+            <div className="text-[11.5px] font-semibold text-amber-800 dark:text-amber-300">Prijedlog od tehničke podrške — potvrdi ili odbaci</div>
+            {prijedlozi.map((pr) => <PrijedlogKartica key={pr.id} pr={pr} canResolve={!!currentUser && !!onResolvePrijedlog} onResolve={onResolvePrijedlog} />)}
+          </div>
+        )}
         {kontakti.length === 0 ? (
           <p className="text-[13px] text-slate-400 dark:text-slate-500">Nema unesenih kontakata.</p>
         ) : (
@@ -754,7 +761,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
   );
 }
 
-export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed }) {
+export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed, kontaktPrijedlozi = [], onResolvePrijedlog }) {
   const [q, setQ] = useState("");
   const [fKolega, setFKolega] = useState(SVE_KOLEGE);
   const [fStatus, setFStatus] = useState(SVI_STATUSI);
@@ -1077,7 +1084,9 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
               xl:sticky xl:top-0 xl:z-auto xl:inset-auto xl:w-[400px] xl:max-w-none xl:shrink-0 xl:bg-transparent xl:dark:bg-transparent xl:max-h-[calc(100vh-7rem)] xl:rounded-2xl">
               <FirmaPanel key={openP.id} p={openP} currentUser={currentUser} onClose={() => setOpenId(null)}
                 onEdit={() => setEditing(openP)} onUpdate={onUpdate}
-                onDelete={async (id) => { await onDelete(id); setOpenId(null); }} onViewCompany={onViewCompany} />
+                onDelete={async (id) => { await onDelete(id); setOpenId(null); }} onViewCompany={onViewCompany}
+                prijedlozi={kontaktPrijedlozi.filter((x) => x.status === "Na čekanju" && x.firma_key === companyKey(openP.naziv_firme))}
+                onResolvePrijedlog={onResolvePrijedlog} />
             </aside>
           </>
         )}
