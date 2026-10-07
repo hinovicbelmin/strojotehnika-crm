@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
-  Calculator, Tags, ArrowUpCircle, Megaphone,
+  Calculator, Tags, ArrowUpCircle, Megaphone, Users,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -18,6 +18,7 @@ import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
 import { KalkulatorTab, CjenovnikTab, praznaKalkulacija } from "../components/kalkulator";
 import { AkcijeTab } from "../components/akcije";
+import { KontaktiTab, primijeniPrijedlog } from "../components/kontakti";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
@@ -36,6 +37,7 @@ const TABS = [
   { id: "kupci", label: "Kupci i licence", icon: Building2 },
   { id: "podrska", label: "Tehnička podrška", icon: Wrench },
   { id: "nadogradnje", label: "Nadogradnje", icon: ArrowUpCircle },
+  { id: "kontakti", label: "Kontakti", icon: Users },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
 ];
 
@@ -75,6 +77,7 @@ export default function HomePage() {
   const [nadFirme, setNadFirme] = useState([]);
   const [akcije, setAkcije] = useState([]);
   const [akcijeFirme, setAkcijeFirme] = useState([]);
+  const [kontaktPrijedlozi, setKontaktPrijedlozi] = useState([]);
 
   // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
   const primijeniKorisnika = (user) => {
@@ -136,6 +139,7 @@ export default function HomePage() {
         setNadFirme(cached.nadFirme || []);
         setAkcije(cached.akcije || []);
         setAkcijeFirme(cached.akcijeFirme || []);
+        setKontaktPrijedlozi(cached.kontaktPrijedlozi || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -154,6 +158,7 @@ export default function HomePage() {
       setNadFirme(all.nadFirme || []);
       setAkcije(all.akcije || []);
       setAkcijeFirme(all.akcijeFirme || []);
+      setKontaktPrijedlozi(all.kontaktPrijedlozi || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -162,8 +167,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -816,6 +821,66 @@ export default function HomePage() {
     setTab("kalkulator");
   };
 
+  /* ---------------- Kontakti: prijedlozi tehničke podrške ---------------- */
+  const addKontaktPrijedlog = async (payload) => {
+    const ts = new Date().toISOString();
+    try {
+      const rec = await insertRow("kontakti_prijedlozi", { ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+      setKontaktPrijedlozi((prev) => [rec, ...prev]);
+      showToast(payload.prodavac ? `Prijedlog poslan prodavaču (${payload.prodavac})` : "Prijedlog poslan prodaji");
+      return rec;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri slanju prijedloga", "error");
+      throw e;
+    }
+  };
+  const povuciKontaktPrijedlog = (pr) => {
+    const item = kontaktPrijedlozi.find((x) => x.id === pr.id);
+    if (!item) return;
+    setKontaktPrijedlozi((prev) => prev.filter((x) => x.id !== pr.id));
+    scheduleUndoDelete("prijedlog kontakta", () => setKontaktPrijedlozi((prev) => [item, ...prev]), () => deleteRow("kontakti_prijedlozi", pr.id));
+  };
+  // prodavač prihvata (kontakt se upisuje u Bazu potencijala) ili odbacuje prijedlog
+  const resolveKontaktPrijedlog = async (pr, prihvati) => {
+    const ts = new Date().toISOString();
+    try {
+      let poruka = prihvati ? "Kontakt ažuriran u Bazi potencijala" : "Prijedlog odbačen";
+      if (prihvati) {
+        const kandidati = potencijali.filter((p) => companyKey(p.naziv_firme) === pr.firma_key);
+        const pot = (pr.potencijal_id && potencijali.find((p) => String(p.id) === String(pr.potencijal_id)))
+          || kandidati.find((p) => p.kolega && p.kolega !== "Nedodijeljeno") || kandidati[0];
+        if (pot) {
+          const { patch, napomena } = primijeniPrijedlog(pot, pr);
+          const rec = await updateRow("potencijali", pot.id, { ...patch, updated_by: currentUser || "—", updated_at: ts });
+          setPotencijali((prev) => prev.map((p) => (p.id === pot.id ? rec : p)));
+          if (napomena) poruka = napomena;
+        } else if (pr.tip !== "Osoba više ne radi") {
+          // firma postoji samo u Kupcima — otvara se zapis u Bazi potencijala s ovim kontaktom
+          const d = String(pr.drzava || "");
+          const drzava = /bosn|herceg/i.test(d) ? "Bosna i Hercegovina" : /croat|hrvat/i.test(d) ? "Hrvatska" : /alban/i.test(d) ? "Albanija" : d;
+          const rec = await insertRow("potencijali", {
+            naziv_firme: pr.firma, drzava: drzava || null, kolega: currentUser || "Nedodijeljeno", prodavaci: currentUser ? [currentUser] : [],
+            status: "Dobijen", kontakt_osoba: pr.ime || "", kontakt_funkcija: pr.funkcija || "", telefon: pr.telefon || "", email: pr.email || "",
+            dodatni_kontakti: [], historija: [], napomena: `Kupac (Kupci i licence) — zapis otvoren iz prijedloga kontakta (${pr.predlozio || "tehnička podrška"})`,
+            created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts,
+          });
+          setPotencijali((prev) => [rec, ...prev]);
+          poruka = "Firma dodana u Bazu potencijala s ovim kontaktom";
+        }
+      }
+      const recP = await updateRow("kontakti_prijedlozi", pr.id, {
+        status: prihvati ? "Prihvaćeno" : "Odbijeno", rijesio: currentUser || "—", rijeseno_at: ts, updated_by: currentUser || "—", updated_at: ts,
+      });
+      setKontaktPrijedlozi((prev) => prev.map((x) => (x.id === pr.id ? recP : x)));
+      showToast(poruka);
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri obradi prijedloga kontakta", "error");
+      throw e;
+    }
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
     if (tip === "Akcija") {
@@ -850,7 +915,8 @@ export default function HomePage() {
   const navBadges = {
     podsjetnici: {
       count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length
-        + akcijeFirme.filter((r) => r.podsjetnik_datum && daysDiff(String(r.podsjetnik_datum).slice(0, 10)) <= 0).length,
+        + akcijeFirme.filter((r) => r.podsjetnik_datum && daysDiff(String(r.podsjetnik_datum).slice(0, 10)) <= 0).length
+        + (isTehnicar ? 0 : kontaktPrijedlozi.filter((p) => p.status === "Na čekanju" && p.prodavac === currentUser).length),
       tone: "alert", hint: "za danas / kasni",
     },
     kupci: {
@@ -986,6 +1052,8 @@ export default function HomePage() {
                   onBulkImport={bulkImportPotencijali}
                   onBulkUpdate={bulkUpdatePotencijali}
                   onBulkDelete={bulkDeletePotencijali}
+                  kontaktPrijedlozi={kontaktPrijedlozi}
+                  onResolvePrijedlog={resolveKontaktPrijedlog}
                   onViewCompany={setViewingCompany}
                   presetStatus={chartFilter && chartFilter.tab === "potencijali" ? chartFilter.value : null}
                   onPresetConsumed={() => setChartFilter(null)}
@@ -1048,6 +1116,19 @@ export default function HomePage() {
                   onKalkulator={otvoriKalkulator}
                   onViewCompany={setViewingCompany}
                   showToast={showToast}
+                />
+              )}
+              {tab === "kontakti" && (
+                <KontaktiTab
+                  kupci={kupci}
+                  potencijali={potencijali}
+                  podrska={podrska}
+                  nadFirme={nadModel.firme}
+                  prijedlozi={kontaktPrijedlozi}
+                  currentUser={currentUser}
+                  onPredlozi={addKontaktPrijedlog}
+                  onPovuci={povuciKontaktPrijedlog}
+                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "kupci" && (
@@ -1117,6 +1198,8 @@ export default function HomePage() {
                   lidovi={lidovi}
                   akcije={akcije}
                   akcijeFirme={akcijeFirme}
+                  kontaktPrijedlozi={isTehnicar ? [] : kontaktPrijedlozi}
+                  onResolvePrijedlog={resolveKontaktPrijedlog}
                   currentUser={currentUser}
                   onClear={clearReminder}
                   onPatch={patchReminderRecord}
