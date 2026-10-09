@@ -19,6 +19,7 @@ import { ForecastTab } from "../components/forecast";
 import { KalkulatorTab, CjenovnikTab, praznaKalkulacija } from "../components/kalkulator";
 import { AkcijeTab } from "../components/akcije";
 import { KontaktiTab, primijeniPrijedlog } from "../components/kontakti";
+import { MailingIzvozModal } from "../components/mailing";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
@@ -78,6 +79,10 @@ export default function HomePage() {
   const [akcije, setAkcije] = useState([]);
   const [akcijeFirme, setAkcijeFirme] = useState([]);
   const [kontaktPrijedlozi, setKontaktPrijedlozi] = useState([]);
+  const [mailingOdjave, setMailingOdjave] = useState([]);
+  const [mailingFilteri, setMailingFilteri] = useState([]);
+  const [mailingIzvozi, setMailingIzvozi] = useState([]);
+  const [mailingModal, setMailingModal] = useState(null); // { akcija } — otvoren prozor "Izvoz za mailing"
 
   // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
   const primijeniKorisnika = (user) => {
@@ -140,6 +145,9 @@ export default function HomePage() {
         setAkcije(cached.akcije || []);
         setAkcijeFirme(cached.akcijeFirme || []);
         setKontaktPrijedlozi(cached.kontaktPrijedlozi || []);
+        setMailingOdjave(cached.mailingOdjave || []);
+        setMailingFilteri(cached.mailingFilteri || []);
+        setMailingIzvozi(cached.mailingIzvozi || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -159,6 +167,9 @@ export default function HomePage() {
       setAkcije(all.akcije || []);
       setAkcijeFirme(all.akcijeFirme || []);
       setKontaktPrijedlozi(all.kontaktPrijedlozi || []);
+      setMailingOdjave(all.mailingOdjave || []);
+      setMailingFilteri(all.mailingFilteri || []);
+      setMailingIzvozi(all.mailingIzvozi || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -167,8 +178,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -881,6 +892,93 @@ export default function HomePage() {
     }
   };
 
+  /* ---------------- Mailing: odjave, filteri, evidencija izvoza ---------------- */
+  const dodajOdjavu = async ({ email, razlog, firma, ime }) => {
+    const ts = new Date().toISOString();
+    try {
+      const [rec] = await upsertRows("mailing_odjave", [{ email: String(email).trim().toLowerCase(), razlog, firma: firma || null, ime: ime || null,
+        created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts }], "email");
+      setMailingOdjave((prev) => [rec, ...prev.filter((o) => o.email !== rec.email)]);
+      showToast(`${rec.email} se više ne izvozi za mailing`);
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri spremanju oznake „Ne šalji mailove“", "error");
+      throw e;
+    }
+  };
+  const ukloniOdjavu = async (o) => {
+    try {
+      await deleteRow("mailing_odjave", o.id);
+      setMailingOdjave((prev) => prev.filter((x) => x.id !== o.id));
+      showToast(`${o.email} ponovo prima mailove`);
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri uklanjanju oznake", "error");
+      throw e;
+    }
+  };
+  const spremiMailingFilter = async (naziv, filter) => {
+    const ts = new Date().toISOString();
+    try {
+      const rec = await insertRow("mailing_filteri", { naziv, filter, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+      setMailingFilteri((prev) => [rec, ...prev]);
+      showToast(`Filter „${naziv}“ spremljen`);
+      return rec;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri spremanju filtera", "error");
+      throw e;
+    }
+  };
+  const obrisiMailingFilter = (fl) => {
+    setMailingFilteri((prev) => prev.filter((x) => x.id !== fl.id));
+    scheduleUndoDelete(`filter „${fl.naziv}“`, () => setMailingFilteri((prev) => [fl, ...prev]), () => deleteRow("mailing_filteri", fl.id));
+  };
+  const zabiljeziIzvoz = async (payload) => {
+    const ts = new Date().toISOString();
+    try {
+      const rec = await insertRow("mailing_izvozi", { ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+      setMailingIzvozi((prev) => [rec, ...prev]);
+      showToast(`Izvezeno ${payload.broj_mailova} mailova`);
+    } catch (e) {
+      console.error(e);
+      showToast("Excel je preuzet, ali izvoz nije zabilježen u evidenciji", "error");
+      throw e;
+    }
+  };
+  // Akcije: nakon slanja mailova — firme iz zadnjeg izvoza prelaze u "Kontaktirana"
+  const oznaciMailPoslan = async (a, rows) => {
+    const ts = new Date().toISOString();
+    const dan = todayStr();
+    const opis = "Poslan mail s akcijom (Outlook)";
+    const noviF = new Map();
+    const noviP = new Map();
+    let greske = 0;
+    const jedan = async (r) => {
+      try {
+        const h = [{ datum: dan, kolega: currentUser || "", opis }, { datum: dan, kolega: currentUser || "", status: "Kontaktirana" }, ...(r.historija || [])];
+        const rec = await updateRow("akcije_firme", r.id, { status: "Kontaktirana", historija: h, zadnji_kontakt: dan, updated_by: currentUser || "—", updated_at: ts });
+        noviF.set(rec.id, rec);
+        const pots = potencijali.filter((x) => companyKey(x.naziv_firme) === r.firma_key);
+        const pot = pots.find((x) => x.kolega && x.kolega !== "Nedodijeljeno") || pots[0];
+        if (pot) {
+          const nova = [{ datum: dan, kolega: currentUser || "", kontakt: "", opis, akcija: a.naziv, akcija_id: a.id }, ...(pot.historija || [])];
+          const zk = nova.reduce((m, x) => (x.datum && (!m || x.datum > m) ? x.datum : m), null);
+          const recP = await updateRow("potencijali", pot.id, { historija: nova, zadnji_kontakt: zk, updated_by: currentUser || "—", updated_at: ts });
+          noviP.set(recP.id, recP);
+        }
+      } catch (e) {
+        console.error(e);
+        greske += 1;
+      }
+    };
+    for (let i = 0; i < rows.length; i += 5) await Promise.all(rows.slice(i, i + 5).map(jedan));
+    setAkcijeFirme((prev) => prev.map((x) => noviF.get(x.id) || x));
+    setPotencijali((prev) => prev.map((x) => noviP.get(x.id) || x));
+    if (greske) showToast(`Označeno ${noviF.size} firmi, ${greske} nije uspjelo — pokušaj ponovo`, "error");
+    else showToast(`${noviF.size} firmi označeno kao kontaktirane`);
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
     if (tip === "Akcija") {
@@ -1054,6 +1152,9 @@ export default function HomePage() {
                   onBulkDelete={bulkDeletePotencijali}
                   kontaktPrijedlozi={kontaktPrijedlozi}
                   onResolvePrijedlog={resolveKontaktPrijedlog}
+                  mailingOdjave={mailingOdjave}
+                  onOdjava={dodajOdjavu}
+                  onUkloniOdjavu={ukloniOdjavu}
                   onViewCompany={setViewingCompany}
                   presetStatus={chartFilter && chartFilter.tab === "potencijali" ? chartFilter.value : null}
                   onPresetConsumed={() => setChartFilter(null)}
@@ -1116,6 +1217,9 @@ export default function HomePage() {
                   onKalkulator={otvoriKalkulator}
                   onViewCompany={setViewingCompany}
                   showToast={showToast}
+                  mailingIzvozi={mailingIzvozi}
+                  onOpenMailing={(a) => setMailingModal({ akcija: a })}
+                  onMailPoslan={oznaciMailPoslan}
                 />
               )}
               {tab === "kontakti" && (
@@ -1128,6 +1232,8 @@ export default function HomePage() {
                   currentUser={currentUser}
                   onPredlozi={addKontaktPrijedlog}
                   onPovuci={povuciKontaktPrijedlog}
+                  odjave={mailingOdjave}
+                  onOpenMailing={isTehnicar ? null : () => setMailingModal({ akcija: null })}
                   onViewCompany={setViewingCompany}
                 />
               )}
@@ -1220,6 +1326,26 @@ export default function HomePage() {
           forecast={forecast}
           nadogradnjeInfo={nadSazetak}
           onClose={() => setViewingCompany(null)}
+        />
+      )}
+
+      {mailingModal && !isTehnicar && (
+        <MailingIzvozModal
+          kupci={kupci}
+          potencijali={potencijali}
+          forecast={forecast}
+          akcije={akcije}
+          akcijeFirme={akcijeFirme}
+          odjave={mailingOdjave}
+          filteri={mailingFilteri}
+          izvozi={mailingIzvozi}
+          presetAkcija={mailingModal.akcija}
+          currentUser={currentUser}
+          onClose={() => setMailingModal(null)}
+          onSaveFilter={spremiMailingFilter}
+          onDeleteFilter={obrisiMailingFilter}
+          onLogExport={zabiljeziIzvoz}
+          showToast={showToast}
         />
       )}
 
