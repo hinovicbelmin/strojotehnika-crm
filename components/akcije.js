@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
   Megaphone, Plus, Download, ArrowLeft, CalendarDays, Check, X, Bell, Calculator, TrendingUp, ExternalLink, History,
-  Info, Building2, FileText, FileSpreadsheet, Pencil, Trash2, Upload, Archive, RotateCcw, ChevronDown, Users,
+  Info, Building2, FileText, FileSpreadsheet, Pencil, Trash2, Upload, Archive, RotateCcw, ChevronDown, Users, Mail, Send,
 } from "lucide-react";
 import {
   inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, PRODAJA_MARKETING_NAMES,
@@ -15,7 +15,11 @@ import { EmptyState, SearchBox } from "./ui";
 import { Avatar, FilterPill, PanelLabel, PageNav, headerBtnSec, fmtN, daysAgo, MenuButton } from "./crmBits";
 import { drzavaGrupa } from "./nadogradnje";
 import { izracunUkupno } from "./kalkulator";
-import { prodavaciOf } from "./potencijali";
+// isto kao prodavaciOf u potencijali.js (ovdje kopija da se izbjegne kružni import)
+function prodavaciOf(p) {
+  const all = [p.kolega, ...(p.prodavaci || [])].filter((x) => x && x !== "Nedodijeljeno");
+  return [...new Set(all)];
+}
 
 /* ---------------------------------------------------------------------- */
 /*  Postavke                                                               */
@@ -34,14 +38,14 @@ const STATUS_STIL = {
 // Akciju (naziv, period, brisanje) osim autora smije mijenjati i
 export const AKCIJE_ADMINI = ["Belmin Hinović"];
 
-const DRZAVE = [["Sve", "Sve države"], ["BA", "BiH"], ["HR", "Hrvatska"], ["AL", "Albanija"], ["OST", "Ostalo"]];
-const ODRZAVANJE = ["Isteklo", "Isteklo prije 1+ god.", "Isteklo prije 3+ god.", "Ističe u 90 dana", "Aktivno", "Sve"];
-const TIPOVI = [["Sve", "Svi tipovi"], ["ALC", "Trajna (ALC)"], ["YLC", "Zakup (YLC/QLC)"], ["YSC", "Pretplata (YSC)"]];
+export const DRZAVE = [["Sve", "Sve države"], ["BA", "BiH"], ["HR", "Hrvatska"], ["AL", "Albanija"], ["OST", "Ostalo"]];
+export const ODRZAVANJE = ["Isteklo", "Isteklo prije 1+ god.", "Isteklo prije 3+ god.", "Ističe u 90 dana", "Aktivno", "Sve"];
+export const TIPOVI = [["Sve", "Svi tipovi"], ["ALC", "Trajna (ALC)"], ["YLC", "Zakup (YLC/QLC)"], ["YSC", "Pretplata (YSC)"]];
 const TIP_GRUPA = { ALC: ["ALC", "ELC", "ULC"], YLC: ["YLC", "QLC"], YSC: ["YSC", "ASC", "QSC"] };
-const ZADNJI = ["Bilo kada", "Zadnjih 90 dana", "Prije više od 6 mj.", "Prije više od 12 mj.", "Nikad kontaktirano"];
+export const ZADNJI = ["Bilo kada", "Zadnjih 90 dana", "Prije više od 6 mj.", "Prije više od 12 mj.", "Nikad kontaktirano"];
 
 // porodice proizvoda — isto kao u Kupcima i licencama
-const PORODICE_LIC = ["SOLIDWORKS", "3DEXPERIENCE", "DraftSight", "SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "Ostalo"];
+export const PORODICE_LIC = ["SOLIDWORKS", "3DEXPERIENCE", "DraftSight", "SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "Ostalo"];
 const ULOGE_3DX = /(Swymer|Collaborative|Collaborator|Business Analyst|Project Planner|Works Learner|Shop Floor|3D Creator|3D Sculptor|Manufacturing Definition|Industrial Designer|Release Engineer|Engineer$|Structural Designer|Product Architect|Innovator)/i;
 function porodicaLicence(k) {
   const p = (k.naziv_proizvoda || "").trim();
@@ -117,7 +121,7 @@ export function statistikaAkcije(rows, fcById) {
 const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
 // Kupci po firmi (ključ = companyKey)
-function kupciPoFirmi(kupci) {
+export function kupciPoFirmi(kupci) {
   const m = new Map();
   for (const k of kupci || []) {
     const key = companyKey(k.naziv_firme);
@@ -127,7 +131,7 @@ function kupciPoFirmi(kupci) {
   }
   return m;
 }
-function licenceInfo(rows, porodica = "Sve", tip = "Sve") {
+export function licenceInfo(rows, porodica = "Sve", tip = "Sve") {
   let rel = rows || [];
   if (tip !== "Sve") rel = rel.filter((k) => (TIP_GRUPA[tip] || []).includes(String(k.revenue_type || "").toUpperCase()));
   if (porodica !== "Sve") rel = rel.filter((k) => porodicaLicence(k) === porodica);
@@ -147,7 +151,7 @@ function licenceInfo(rows, porodica = "Sve", tip = "Sve") {
   const tekst = PORODICE_LIC.filter((f) => m.get(f) > 0).map((f) => `${f} ${m.get(f)}`).join(" · ");
   return { tekst, n, maxEnd, aktivno, ima: rel.length > 0 };
 }
-function odrzavanjeOk(li, opcija) {
+export function odrzavanjeOk(li, opcija) {
   if (opcija === "Sve") return true;
   if (opcija === "Aktivno") return li.aktivno;
   if (opcija === "Isteklo") return !li.aktivno;
@@ -158,7 +162,7 @@ function odrzavanjeOk(li, opcija) {
   if (opcija === "Ističe u 90 dana") return li.aktivno && d >= 0 && d <= 90;
   return true;
 }
-function zadnjiOk(p, opcija) {
+export function zadnjiOk(p, opcija) {
   if (opcija === "Bilo kada") return true;
   const n = daysAgo(p.zadnji_kontakt);
   if (opcija === "Nikad kontaktirano") return n == null;
@@ -169,7 +173,7 @@ function zadnjiOk(p, opcija) {
   return true;
 }
 // prvi potencijal po firmi (prednost ima zapis s prodavačem)
-function potencijaliPoFirmi(potencijali) {
+export function potencijaliPoFirmi(potencijali) {
   const m = new Map();
   for (const p of potencijali || []) {
     const key = companyKey(p.naziv_firme);
@@ -1034,8 +1038,18 @@ function sortKljuc(r, st) {
 function AkcijaDetalj({
   a, rows, fcById, potMap, kupci, potencijali, kalkulacije, currentUser, canManage,
   onBack, onEdit, onToggleZavrsena, onDelete, onAddFirme, onUpdate, onZapis, onForecast, onKalkulator, onRemove, onViewCompany, showToast,
+  mailingIzvozi = [], onOpenMailing, onMailPoslan,
 }) {
   const imaMoje = rows.some((r) => r.prodavac === currentUser);
+  const [showMailPoslan, setShowMailPoslan] = useState(false);
+  const [busyMail, setBusyMail] = useState(false);
+  const zadnjiIzvoz = useMemo(() => mailingIzvozi.filter((l) => l.akcija_id === a.id)
+    .sort((x, y) => String(y.created_at || "").localeCompare(String(x.created_at || "")))[0] || null, [mailingIzvozi, a.id]);
+  const zaOznaciti = useMemo(() => {
+    if (!zadnjiIzvoz) return [];
+    const keys = new Set(Array.isArray(zadnjiIzvoz.firme) ? zadnjiIzvoz.firme : []);
+    return rows.filter((r) => keys.has(r.firma_key) && efStatus(r, fcById) === "Nije kontaktirana");
+  }, [zadnjiIzvoz, rows, fcById]);
   const [fProd, setFProd] = useState(imaMoje ? currentUser : "Svi");
   const [fStatus, setFStatus] = useState("Svi");
   const [q, setQ] = useState("");
@@ -1083,6 +1097,11 @@ function AkcijaDetalj({
         <div className="flex flex-wrap gap-2">
           <button type="button" className={headerBtnSec} onClick={() => setShowDodaj(true)}><Plus size={15} /> Dodaj firme</button>
           <button type="button" className={headerBtnSec} onClick={() => setShowIzv(true)}><Download size={15} /> Izvještaj</button>
+          {onOpenMailing && <button type="button" className={headerBtnSec} onClick={() => onOpenMailing(a)}><Mail size={15} /> Izvezi kontakte za mailing</button>}
+          {onMailPoslan && (
+            <button type="button" className={headerBtnSec} onClick={() => setShowMailPoslan(!showMailPoslan)} disabled={!zadnjiIzvoz}
+              title={zadnjiIzvoz ? undefined : "Prvo izvezi kontakte za mailing iz ove akcije"}><Send size={15} /> Mail poslan — označi firme</button>
+          )}
           {canManage && (
             <MenuButton label="Akcija" icon={Pencil} className={headerBtnSec} items={[
               { label: "Uredi naziv, ponudu i period", icon: Pencil, onClick: onEdit },
@@ -1093,6 +1112,27 @@ function AkcijaDetalj({
           )}
         </div>
       </div>
+
+      {showMailPoslan && zadnjiIzvoz && (
+        <div className="flex flex-wrap items-start gap-3 bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 rounded-xl px-4 py-3">
+          <Check size={17} className="text-teal-700 dark:text-teal-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-[240px] text-[13px] text-teal-900 dark:text-teal-200">
+            {zaOznaciti.length ? (
+              <><b>Označi kao „Kontaktirana“?</b> {fmtN(zaOznaciti.length)} firmi iz zadnjeg izvoza ({fmtDate(String(zadnjiIzvoz.created_at || "").slice(0, 10))}) koje su još „Nije kontaktirana“.
+                U historiju akcije i Baze potencijala upisuje se: <i>„Poslan mail s akcijom (Outlook)“</i>.</>
+            ) : <>Sve firme iz zadnjeg izvoza ({fmtDate(String(zadnjiIzvoz.created_at || "").slice(0, 10))}) su već kontaktirane.</>}
+          </div>
+          <div className="flex gap-2">
+            {zaOznaciti.length > 0 && (
+              <button type="button" className={btnPrimary + " !py-1.5 text-[13px]"} disabled={busyMail}
+                onClick={async () => { setBusyMail(true); try { await onMailPoslan(a, zaOznaciti); setShowMailPoslan(false); } catch (e) { /* toast je već prikazan */ } finally { setBusyMail(false); } }}>
+                {busyMail ? "Označavam…" : `Označi ${fmtN(zaOznaciti.length)} firmi`}
+              </button>
+            )}
+            <button type="button" className={btnSecondary + " !py-1.5 text-[13px]"} onClick={() => setShowMailPoslan(false)}>{zaOznaciti.length ? "Ne sada" : "Zatvori"}</button>
+          </div>
+        </div>
+      )}
 
       {/* pločice po statusu */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5">
@@ -1254,6 +1294,7 @@ function AkcijaKartica({ a, rows, fcById, currentUser, onOpen }) {
 export function AkcijeTab({
   akcije = [], akcijeFirme = [], kupci = [], potencijali = [], forecast = [], kalkulacije = [], currentUser,
   onSaveAkcija, onDeleteAkcija, onAddFirme, onUpdateFirma, onZapis, onForecast, onRemoveFirma, onKalkulator, onViewCompany, showToast,
+  mailingIzvozi = [], onOpenMailing, onMailPoslan,
 }) {
   const [otvorenaId, setOtvorenaId] = useState(null);
   const [modal, setModal] = useState(null); // { initial } | null
@@ -1298,7 +1339,8 @@ export function AkcijeTab({
         onToggleZavrsena={(v) => onSaveAkcija(otvorena.id, { zavrsena: v })}
         onDelete={() => { setOtvorenaId(null); onDeleteAkcija(otvorena.id); }}
         onAddFirme={onAddFirme} onUpdate={onUpdateFirma} onZapis={(r, zapis) => onZapis(r, zapis, otvorena)}
-        onForecast={onForecast} onKalkulator={onKalkulator} onRemove={onRemoveFirma} onViewCompany={onViewCompany} showToast={showToast} />
+        onForecast={onForecast} onKalkulator={onKalkulator} onRemove={onRemoveFirma} onViewCompany={onViewCompany} showToast={showToast}
+        mailingIzvozi={mailingIzvozi} onOpenMailing={onOpenMailing} onMailPoslan={onMailPoslan} />
     );
   } else {
     sadrzaj = (
