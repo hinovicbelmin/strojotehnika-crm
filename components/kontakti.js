@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Users, Phone, Mail, Copy, Check, X, Lock, Download, ExternalLink, Building2, Wrench, ArrowUpCircle, UserPlus,
-  Send, Pencil, UserX, Inbox,
+  Send, Pencil, UserX, Inbox, Ban,
 } from "lucide-react";
 import { inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, downloadCSV } from "../lib/crm";
 import { EmptyState, SearchBox } from "./ui";
@@ -515,8 +515,9 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
 
 export function KontaktiTab({
   kupci = [], potencijali = [], podrska = [], nadFirme = [], prijedlozi = [], currentUser,
-  onPredlozi, onPovuci, onViewCompany,
+  onPredlozi, onPovuci, onViewCompany, odjave = [], onOpenMailing,
 }) {
+  const odjavljeni = useMemo(() => new Set((odjave || []).map((o) => String(o.email || "").toLowerCase())), [odjave]);
   const mojaDrzava = Object.entries(TEHNICAR_PO_DRZAVI).find(([, t]) => t === currentUser);
   const [fDrz, setFDrz] = useState(mojaDrzava ? mojaDrzava[0] : "Sve");
   const [fObuhvat, setFObuhvat] = useState("Kupci s održavanjem");
@@ -604,6 +605,7 @@ export function KontaktiTab({
             </button>
           )}
           <button type="button" className={headerBtnSec} onClick={izvoz} disabled={!redovi.length}><Download size={15} /> Izvoz</button>
+          {onOpenMailing && <button type="button" className={btnPrimary} onClick={onOpenMailing}><Mail size={15} /> Izvoz za mailing</button>}
         </div>
       </div>
 
@@ -666,7 +668,9 @@ export function KontaktiTab({
                           : <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </div>
                       <div className="min-w-0" onClick={(e) => mail && e.stopPropagation()}>
-                        {mail ? <a href={`mailto:${mail}`} className="inline-flex items-center gap-1.5 text-[13px] text-teal-700 dark:text-teal-400 hover:underline max-w-full"><Mail size={13} className="shrink-0" /><span className="truncate">{mail}</span></a>
+                        {mail ? <a href={`mailto:${mail}`} title={odjavljeni.has(mail.toLowerCase()) ? "Ne šalji masovne mailove" : undefined}
+                          className={"inline-flex items-center gap-1.5 text-[13px] hover:underline max-w-full " + (odjavljeni.has(mail.toLowerCase()) ? "text-red-600 dark:text-red-400" : "text-teal-700 dark:text-teal-400")}>
+                          {odjavljeni.has(mail.toLowerCase()) ? <Ban size={13} className="shrink-0" /> : <Mail size={13} className="shrink-0" />}<span className="truncate">{mail}</span></a>
                           : <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </div>
                       <div>{k ? <IzvorChip k={k} /> : currentUser ? (
