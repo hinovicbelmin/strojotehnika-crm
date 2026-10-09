@@ -16,6 +16,7 @@ import {
   initials, daysAgo, relDate, ageCls, fmtN, headerBtnSec,
 } from "./crmBits";
 import { PrijedlogKartica } from "./kontakti";
+import { OdjavaOznaka, prviMail } from "./mailing";
 
 export const NEDODIJELJENO = "Nedodijeljeno";
 const NEPOZNATA = "Nepoznata";
@@ -535,7 +536,7 @@ function kontaktiOf(p) {
 const firstOf = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)[0] || "";
 
 /* ---------- Bočni panel firme ---------- */
-function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onViewCompany, prijedlozi = [], onResolvePrijedlog }) {
+function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onViewCompany, prijedlozi = [], onResolvePrijedlog, odjave = [], onOdjava, onUkloniOdjavu }) {
   const [novi, setNovi] = useState("");
   const [datum, setDatum] = useState(todayStr());
   const [busy, setBusy] = useState(false);
@@ -673,6 +674,13 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
                     <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ")}>
                       {[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ") || "—"}
                     </div>
+                    {onOdjava && prviMail(k.email) && (
+                      <div className="mt-1">
+                        <OdjavaOznaka email={k.email} firma={p.naziv_firme} ime={k.ime} disabled={!currentUser}
+                          odjava={odjave.find((o) => String(o.email || "").toLowerCase() === prviMail(k.email)) || null}
+                          onOdjava={onOdjava} onUkloniOdjavu={onUkloniOdjavu} />
+                      </div>
+                    )}
                   </div>
                   {tel && <a href={`tel:${tel.replace(/[^\d+]/g, "")}`} className={iconLink} aria-label={`Nazovi ${k.ime || ""}`} title={tel}><Phone size={14} /></a>}
                   {mail && <a href={`mailto:${mail}`} className={iconLink} aria-label={`Pošalji mail ${k.ime || ""}`} title={mail}><Mail size={14} /></a>}
@@ -761,7 +769,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
   );
 }
 
-export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed, kontaktPrijedlozi = [], onResolvePrijedlog }) {
+export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onBulkUpdate, onBulkDelete, onViewCompany, presetStatus, onPresetConsumed, kontaktPrijedlozi = [], onResolvePrijedlog, mailingOdjave = [], onOdjava, onUkloniOdjavu }) {
   const [q, setQ] = useState("");
   const [fKolega, setFKolega] = useState(SVE_KOLEGE);
   const [fStatus, setFStatus] = useState(SVI_STATUSI);
@@ -1086,7 +1094,7 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
                 onEdit={() => setEditing(openP)} onUpdate={onUpdate}
                 onDelete={async (id) => { await onDelete(id); setOpenId(null); }} onViewCompany={onViewCompany}
                 prijedlozi={kontaktPrijedlozi.filter((x) => x.status === "Na čekanju" && x.firma_key === companyKey(openP.naziv_firme))}
-                onResolvePrijedlog={onResolvePrijedlog} />
+                onResolvePrijedlog={onResolvePrijedlog} odjave={mailingOdjave} onOdjava={onOdjava} onUkloniOdjavu={onUkloniOdjavu} />
             </aside>
           </>
         )}
