@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle } from "lucide-react";
 import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
+import { KalendarFirmeSekcija } from "./kalendar";
 
 // Poređenje naziva firmi preko ključa ("M2R shpk" = "M2R SH PK", "Bezmana" = "BEZMANA DOO")
 function norm(s) {
@@ -22,7 +23,7 @@ function licenseDisplayName(k) {
   return k.naziv_proizvoda || "—";
 }
 
-export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, nadogradnjeInfo, onClose }) {
+export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, nadogradnjeInfo, kalendar = [], onClose }) {
   const target = norm(name);
   const [sveHistorija, setSveHistorija] = useState(false);
   let potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
@@ -102,6 +103,9 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
           <p className="text-sm text-slate-400 dark:text-slate-500">Nema zapisa u Bazi potencijala za ovu firmu.</p>
         )}
       </div>
+
+      {/* Kalendar — posjete i obuke */}
+      <KalendarFirmeSekcija unosi={kalendar} naziv={potencijal ? potencijal.naziv_firme : name} />
 
       {/* Historija kontaktiranja (Baza potencijala) */}
       {kontaktHistorija.length > 0 && (
