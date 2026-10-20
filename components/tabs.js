@@ -20,6 +20,7 @@ import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, Co
 import { PrijedlogKartica } from "./kontakti";
 import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, relDate, fmtN, headerBtnSec } from "./crmBits";
 import { NadogradnjaBadge } from "./nadogradnje";
+import { VanUredaTraka, KalendarDanasBlok } from "./kalendar";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 
 /* ====================================================================== */
@@ -111,7 +112,7 @@ function StatusTick({ x, y, payload, fill }) {
 const panelCls = "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 transition-shadow duration-150 hover:shadow-md dark:hover:shadow-black/30";
 const panelTitleCls = "text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2";
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setTab, theme, onLicenseClick, currentUser }) {
+export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kalendar = [], setTab, theme, onLicenseClick, currentUser }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
   const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
@@ -276,6 +277,8 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, setT
           </div>
         </div>
       )}
+
+      <VanUredaTraka unosi={kalendar} onOpen={() => setTab("kalendar")} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
@@ -2754,7 +2757,7 @@ function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) 
   );
 }
 
-export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], kontaktPrijedlozi = [], onResolvePrijedlog, currentUser, onClear, onPatch, onViewCompany }) {
+export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], kontaktPrijedlozi = [], onResolvePrijedlog, currentUser, onClear, onPatch, onViewCompany, kalendar = [], onOpenKalendar }) {
   const [sviPrijedlozi, setSviPrijedlozi] = useState(false);
   const [mod, setMod] = useState(currentUser ? "moji" : "tim");
   const [fKolega, setFKolega] = useState("Svi");
@@ -2936,6 +2939,9 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
         <KpiTile icon={Clock} label="Kasnije" value={nKasnije} active={fRok === "Kasnije"} onClick={() => toggleRok("Kasnije")}
           sub="sljedeća sedmica i dalje" />
       </div>
+
+      {/* ---------- kalendar: moji unosi danas (i sutra s podsjetnikom) ---------- */}
+      <KalendarDanasBlok unosi={kalendar} currentUser={currentUser} onOpen={onOpenKalendar} />
 
       {/* ---------- prijedlozi kontakata od tehničke podrške ---------- */}
       {(() => {
