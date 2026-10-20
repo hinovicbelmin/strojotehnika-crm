@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
-  Calculator, Tags, ArrowUpCircle, Megaphone, Users,
+  Calculator, Tags, ArrowUpCircle, Megaphone, Users, CalendarDays,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -20,6 +20,7 @@ import { KalkulatorTab, CjenovnikTab, praznaKalkulacija } from "../components/ka
 import { AkcijeTab } from "../components/akcije";
 import { KontaktiTab, primijeniPrijedlog } from "../components/kontakti";
 import { MailingIzvozModal } from "../components/mailing";
+import { KalendarTab, vanUredaDanas, opisZaHistoriju } from "../components/kalendar";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
 import { CompanyProfileModal } from "../components/companyProfile";
 import { GlobalSearch } from "../components/globalSearch";
@@ -40,6 +41,7 @@ const TABS = [
   { id: "nadogradnje", label: "Nadogradnje", icon: ArrowUpCircle },
   { id: "kontakti", label: "Kontakti", icon: Users },
   { id: "podsjetnici", label: "Podsjetnici", icon: Bell },
+  { id: "kalendar", label: "Kalendar", icon: CalendarDays },
 ];
 
 // Tabovi kojima tehničari nemaju pristup (vidljivi, ali "zaleđeni")
@@ -82,6 +84,7 @@ export default function HomePage() {
   const [mailingOdjave, setMailingOdjave] = useState([]);
   const [mailingFilteri, setMailingFilteri] = useState([]);
   const [mailingIzvozi, setMailingIzvozi] = useState([]);
+  const [kalendar, setKalendar] = useState([]);
   const [mailingModal, setMailingModal] = useState(null); // { akcija } — otvoren prozor "Izvoz za mailing"
 
   // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
@@ -148,6 +151,7 @@ export default function HomePage() {
         setMailingOdjave(cached.mailingOdjave || []);
         setMailingFilteri(cached.mailingFilteri || []);
         setMailingIzvozi(cached.mailingIzvozi || []);
+        setKalendar(cached.kalendar || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -170,6 +174,7 @@ export default function HomePage() {
       setMailingOdjave(all.mailingOdjave || []);
       setMailingFilteri(all.mailingFilteri || []);
       setMailingIzvozi(all.mailingIzvozi || []);
+      setKalendar(all.kalendar || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -178,8 +183,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -979,6 +984,74 @@ export default function HomePage() {
     else showToast(`${noviF.size} firmi označeno kao kontaktirane`);
   };
 
+  /* ---------------- Kalendar ---------------- */
+  const saveKalendar = async (id, payload) => {
+    const ts = new Date().toISOString();
+    try {
+      if (id) {
+        const rec = await updateRow("kalendar", id, { ...payload, updated_by: currentUser || "—", updated_at: ts });
+        setKalendar((prev) => prev.map((x) => (x.id === id ? rec : x)));
+        showToast("Unos izmijenjen");
+        return rec;
+      }
+      const rec = await insertRow("kalendar", { ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
+      setKalendar((prev) => [rec, ...prev]);
+      showToast("Unos dodan u kalendar");
+      return rec;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju unosa u kalendar", "error");
+      return null;
+    }
+  };
+  const deleteKalendar = (u) => {
+    const item = kalendar.find((x) => x.id === u.id);
+    if (!item) return;
+    setKalendar((prev) => prev.filter((x) => x.id !== u.id));
+    scheduleUndoDelete(
+      item.naslov || item.vrsta || "unos u kalendaru",
+      () => setKalendar((prev) => [item, ...prev]),
+      () => deleteRow("kalendar", u.id)
+    );
+  };
+  // posjeta/obuka iz kalendara -> zapis u historiju firmi (Baza potencijala)
+  const upisiKalendarHistoriju = async (u, datum) => {
+    const ts = new Date().toISOString();
+    const opis = opisZaHistoriju(u);
+    const firme = Array.isArray(u.firme) ? u.firme : [];
+    const noviP = new Map();
+    let nema = 0;
+    let greske = 0;
+    for (const f of firme) {
+      const k = companyKey(f);
+      const pots = potencijali.filter((x) => companyKey(x.naziv_firme) === k);
+      const pot = pots.find((x) => x.kolega && x.kolega !== "Nedodijeljeno") || pots[0];
+      if (!pot) { nema += 1; continue; }
+      try {
+        const nova = [{ datum, kolega: currentUser || "", kontakt: "", opis, kalendar_id: u.id }, ...(pot.historija || [])];
+        const zk = nova.reduce((m, x) => (x.datum && (!m || x.datum > m) ? x.datum : m), null);
+        const recP = await updateRow("potencijali", pot.id, { historija: nova, zadnji_kontakt: zk, updated_by: currentUser || "—", updated_at: ts });
+        noviP.set(recP.id, recP);
+      } catch (e) {
+        console.error(e);
+        greske += 1;
+      }
+    }
+    if (noviP.size) setPotencijali((prev) => prev.map((x) => noviP.get(x.id) || x));
+    if (noviP.size || nema) {
+      try {
+        const h = [...new Set([...(Array.isArray(u.historija_upisana) ? u.historija_upisana : []), datum])];
+        const rec = await updateRow("kalendar", u.id, { historija_upisana: h, updated_by: currentUser || "—", updated_at: ts });
+        setKalendar((prev) => prev.map((x) => (x.id === u.id ? rec : x)));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (greske) showToast(`Upisano kod ${noviP.size} firmi, ${greske} nije uspjelo — pokušaj ponovo`, "error");
+    else if (nema && !noviP.size) showToast("Nijedna od ovih firmi nije u Bazi potencijala — ništa nije upisano", "error");
+    else showToast(`Upisano u historiju ${noviP.size} ${noviP.size === 1 ? "firme" : "firmi"}${nema ? ` · ${nema} nije u Bazi potencijala` : ""}`);
+  };
+
   // izmjena podsjetnika (odgoda, obavljeno + zapis u historiju, novi podsjetnik)
   const patchReminderRecord = async (tip, id, patch, poruka) => {
     if (tip === "Akcija") {
@@ -1034,6 +1107,10 @@ export default function HomePage() {
         return akcijeFirme.filter((r) => aktivne.has(r.akcija_id) && r.prodavac === currentUser && (r.status || "Nije kontaktirana") === "Nije kontaktirana").length;
       })(),
       tone: "muted", hint: "tvojih firmi čeka kontakt u aktivnim akcijama",
+    },
+    kalendar: {
+      count: vanUredaDanas(kalendar).size,
+      tone: "muted", hint: "kolega danas van ureda",
     },
     lidovi: {
       count: lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length,
@@ -1133,6 +1210,7 @@ export default function HomePage() {
                   kupci={kupci}
                   podrska={podrska}
                   forecast={forecast}
+                  kalendar={kalendar}
                   setTab={setTab}
                   theme={theme}
                   currentUser={currentUser}
@@ -1310,6 +1388,20 @@ export default function HomePage() {
                   onClear={clearReminder}
                   onPatch={patchReminderRecord}
                   onViewCompany={setViewingCompany}
+                  kalendar={kalendar}
+                  onOpenKalendar={() => setTab("kalendar")}
+                />
+              )}
+              {tab === "kalendar" && (
+                <KalendarTab
+                  unosi={kalendar}
+                  potencijali={potencijali}
+                  kupci={kupci}
+                  currentUser={currentUser}
+                  onSave={saveKalendar}
+                  onDelete={deleteKalendar}
+                  onUpisiHistoriju={upisiKalendarHistoriju}
+                  onViewCompany={setViewingCompany}
                 />
               )}
             </div>
@@ -1325,6 +1417,7 @@ export default function HomePage() {
           podrska={podrska}
           forecast={forecast}
           nadogradnjeInfo={nadSazetak}
+          kalendar={kalendar}
           onClose={() => setViewingCompany(null)}
         />
       )}
