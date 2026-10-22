@@ -14,7 +14,7 @@ import {
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
   getColleagueDept, getForecastStatusWeight, isForecastWon, isForecastLost,
-  COLLEAGUES, companyKey,
+  COLLEAGUES, companyKey, jeGlavnaLicenca, nazivLicence,
 } from "../lib/crm";
 import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
 import { PrijedlogKartica } from "./kontakti";
@@ -114,7 +114,8 @@ const panelTitleCls = "text-[15px] font-semibold text-slate-800 dark:text-slate-
 
 export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kalendar = [], setTab, theme, onLicenseClick, currentUser }) {
   const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
-  const isticuLicence = kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
+  // samo glavne licence (bez "with …" komponenti i uloga 3DEXPERIENCE) koje ističu u narednih 30 dana
+  const isticuLicence = kupci.filter((k) => jeGlavnaLicenca(k) && k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
   const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
   const otvoreniPotencijali = potencijali.filter((p) => p.status !== "Dobijen" && p.status !== "Izgubljen").length;
 
@@ -131,9 +132,9 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
   const kupciPrije30 = new Set(
     kupci.filter((k) => !k.start_date || daysDiff(k.start_date) <= -30).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
   ).size;
-  // "Ističe ≤30 dana" kakvo je bilo prije 30 dana = licence s krajem do danas
+  // "Ističe ≤30 dana" kakvo je bilo prije 30 dana = glavne licence s krajem u zadnjih 30 dana
   const istekPrije30 = new Set(
-    kupci.filter((k) => k.end_date && daysDiff(k.end_date) <= 0).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
+    kupci.filter((k) => jeGlavnaLicenca(k) && k.end_date && daysDiff(k.end_date) >= -30 && daysDiff(k.end_date) <= 0).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
   ).size;
 
   const ukupnoLidova = lidovi.length;
@@ -187,7 +188,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
   const ime = (currentUser || "").split(" ")[0];
 
   // Licence koje ističu u tekućem kalendarskom mjesecu
-  const licenceOvajMjesec = kupci.filter((k) => k.end_date && String(k.end_date).slice(0, 7) === tekuciMjesec);
+  const licenceOvajMjesec = kupci.filter((k) => jeGlavnaLicenca(k) && k.end_date && String(k.end_date).slice(0, 7) === tekuciMjesec);
   const brojLicenciIstek = licenceOvajMjesec.reduce((s, k) => s + (Number(k.broj_licenci) || 1), 0);
   const brojFirmiIstek = new Set(licenceOvajMjesec.map((k) => normFirma(k.naziv_firme)).filter(Boolean)).size;
   const recenicaIstek =
@@ -468,11 +469,11 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
                 return (
                   <li key={k.id} className="py-3 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-700 dark:text-slate-300 truncate">
-                        <span className="font-semibold">{k.naziv_firme}</span> — {k.naziv_proizvoda}
+                      <p className="text-sm text-slate-700 dark:text-slate-300 truncate" title={`${k.naziv_firme} — ${nazivLicence(k)}`}>
+                        <span className="font-semibold">{k.naziv_firme}</span> — {nazivLicence(k)}
                       </p>
                       <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                        {k.grad} · ističe {fmtDate(k.end_date)}
+                        {[k.grad, `${Number(k.broj_licenci) > 0 ? Number(k.broj_licenci) : 1} lic.`, `ističe ${fmtDate(k.end_date)}`].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <span className={"text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 " + s.cls}>{s.label}</span>
