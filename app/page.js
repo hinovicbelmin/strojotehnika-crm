@@ -8,7 +8,7 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import {
   COLLEAGUE_NAMES, fetchAllData, insertRow, updateRow, deleteRow, deleteAllRows, bulkInsert, upsertRows, bulkUpdateRows, bulkDeleteRows, todayStr, getColleagueDept, RENAMED_COLLEAGUES,
-  getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost, companyKey,
+  getReminders, daysDiff, currentMonthStr, isForecastWon, isForecastLost, companyKey, jeGlavnaLicenca,
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
@@ -1092,7 +1092,7 @@ export default function HomePage() {
     },
     kupci: {
       count: new Set(
-        kupci.filter((k) => k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30)
+        kupci.filter((k) => jeGlavnaLicenca(k) && k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30)
           .map((k) => (k.naziv_firme || "").trim().toLowerCase()).filter(Boolean)
       ).size,
       tone: "warn", hint: "firmi — licenca ističe ≤30 dana",
