@@ -9,7 +9,7 @@ import {
 import {
   inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, PRODAJA_MARKETING_NAMES,
   POTENCIJAL_STATUSI, currentMonthStr, isForecastWon, isForecastLost, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE,
-  FORECAST_STATUSI, FORECAST_PRODAVACI, buildCompanyNameIndex, findCompanyMatch,
+  FORECAST_STATUSI, FORECAST_PRODAVACI, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca,
 } from "../lib/crm";
 import { EmptyState, SearchBox } from "./ui";
 import { Avatar, FilterPill, PanelLabel, PageNav, headerBtnSec, fmtN, daysAgo, MenuButton } from "./crmBits";
@@ -57,7 +57,7 @@ function porodicaLicence(k) {
 }
 const licKom = (k) => { const n = Number(k.broj_licenci); return n > 0 ? n : 1; };
 // dodatak uz paket ("with SOLIDWORKS CAM ...") nije zasebna licenca — ne broji se, ali se gleda njegov datum održavanja
-const jeKomponenta = (k) => /^with\b/i.test((k.naziv_proizvoda_2 || "").trim());
+const jeKomponenta = (k) => !jeGlavnaLicenca(k); // sporedne licence (vidi lib/crm.js) se ne broje
 
 /* ---------------------------------------------------------------------- */
 /*  Pomoćne funkcije                                                       */
