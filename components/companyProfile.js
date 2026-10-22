@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle } from "lucide-react";
-import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch } from "../lib/crm";
+import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
 import { KalendarFirmeSekcija } from "./kalendar";
 
@@ -17,9 +17,10 @@ function norm(s) {
 function licenseDisplayName(k) {
   const sub = (k.naziv_proizvoda_2 || "").trim();
   if (sub) {
-    if (/^with\b/i.test(sub)) return null;
+    if (!jeGlavnaLicenca(k)) return null;
     return sub;
   }
+  if (!jeGlavnaLicenca(k)) return null;
   return k.naziv_proizvoda || "—";
 }
 
