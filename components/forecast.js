@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare, List, LayoutGrid } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare, List, LayoutGrid, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
   FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, FORECAST_STATUS_HEX, getForecastStatusWeight, isForecastWon, isForecastLost,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
@@ -335,6 +335,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
   const [fKupac, setFKupac] = useState("");
   const [fSoftver, setFSoftver] = useState("Svi softveri");
   const [fTipLicence, setFTipLicence] = useState("Svi tipovi");
+  const [sort, setSort] = useState(null); // { polje: "prodavac" | "kupac" | …, smjer: 1 (A→Ž) | -1 (Ž→A) }
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -394,6 +395,32 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
     if (fKupac && !(f.kupac || "").toLowerCase().includes(fKupac.toLowerCase())) return false;
     return true;
   });
+
+  // redoslijed u tabeli: klik na naslov kolone = A→Ž, drugi klik = Ž→A, treći = bez sortiranja
+  const redovi = useMemo(() => {
+    if (!sort) return filtered;
+    const v = (f) => String(f[sort.polje] ?? "").trim();
+    return [...filtered].sort((a, b) => {
+      const x = v(a), y = v(b);
+      if (!x && y) return 1;
+      if (x && !y) return -1;
+      const c = x.localeCompare(y, "hr", { sensitivity: "base", numeric: true }) * sort.smjer;
+      return c || String(a.kupac || "").localeCompare(String(b.kupac || ""), "hr", { sensitivity: "base" });
+    });
+  }, [filtered, sort]);
+  const klikSort = (polje) => setSort((s) => (!s || s.polje !== polje ? { polje, smjer: 1 } : s.smjer === 1 ? { polje, smjer: -1 } : null));
+  const sortTh = (polje, children, className = "") => {
+    const akt = sort && sort.polje === polje;
+    const Ikona = !akt ? ArrowUpDown : sort.smjer === 1 ? ArrowUp : ArrowDown;
+    return (
+      <th key={polje} className={"px-4 py-2.5 " + className} aria-sort={akt ? (sort.smjer === 1 ? "ascending" : "descending") : "none"}>
+        <button type="button" onClick={() => klikSort(polje)} title={akt ? (sort.smjer === 1 ? "Poredano A→Ž · klik za Ž→A" : "Poredano Ž→A · klik za poništavanje") : "Poredaj po abecedi A→Ž"}
+          className={"inline-flex items-center gap-1 uppercase tracking-wide font-semibold hover:text-slate-800 dark:hover:text-slate-200 " + (akt ? "text-teal-700 dark:text-teal-400" : "")}>
+          {children} <Ikona size={12} className={akt ? "" : "opacity-50"} />
+        </button>
+      </th>
+    );
+  };
 
   const ukupnoLicenci = filtered.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0), 0);
   const prodanoLicenci = filtered.filter((f) => isForecastWon(f.status)).reduce((sum, f) => sum + (Number(f.broj_licenci) || 0), 0);
@@ -588,18 +615,18 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
                       {selected.size === filtered.length && filtered.length > 0 ? <CheckSquare size={15} /> : <Square size={15} />}
                     </button>
                   </th>
-                  <th className="px-4 py-2.5">Prodavač</th>
-                  <th className="px-4 py-2.5">Kupac</th>
-                  <th className="px-4 py-2.5">Softver</th>
-                  <th className="px-4 py-2.5">Tip licence</th>
+                  {sortTh("prodavac", "Prodavač")}
+                  {sortTh("kupac", "Kupac")}
+                  {sortTh("softver", "Softver")}
+                  {sortTh("tip_licence", "Tip licence")}
                   <th className="px-4 py-2.5 text-center">Broj licenci</th>
-                  <th className="px-4 py-2.5">Status</th>
+                  {sortTh("status", "Status")}
                   <th className="px-4 py-2.5">Napomena</th>
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map((f) => (
+                {redovi.map((f) => (
                   <tr key={f.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => setEditing(f)}>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => toggleSelect(f.id)} className={btnGhostIcon}>
@@ -639,7 +666,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
 
         {/* Mobilne kartice */}
         <div className="sm:hidden space-y-2.5 mb-6">
-          {filtered.map((f) => (
+          {redovi.map((f) => (
             <div key={f.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-4" onClick={() => setEditing(f)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex items-start gap-2">
