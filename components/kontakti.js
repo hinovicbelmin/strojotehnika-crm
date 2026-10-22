@@ -5,7 +5,7 @@ import {
   Users, Phone, Mail, Copy, Check, X, Lock, Download, ExternalLink, Building2, Wrench, ArrowUpCircle, UserPlus,
   Send, Pencil, UserX, Inbox, Ban,
 } from "lucide-react";
-import { inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, downloadCSV } from "../lib/crm";
+import { inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, downloadCSV, jeGlavnaLicenca } from "../lib/crm";
 import { EmptyState, SearchBox } from "./ui";
 import { Avatar, PanelLabel, PageNav, headerBtnSec, fmtN, initials } from "./crmBits";
 import { drzavaGrupa, TEHNICAR_PO_DRZAVI } from "./nadogradnje";
@@ -25,7 +25,7 @@ function prodavaciOf(p) {
   const all = [p.kolega, ...(p.prodavaci || [])].filter((x) => x && x !== NEDODIJELJENO);
   return [...new Set(all)];
 }
-const jeKomponenta = (k) => /^with\b/i.test((k.naziv_proizvoda_2 || "").trim());
+const jeKomponenta = (k) => !jeGlavnaLicenca(k); // sporedne licence (vidi lib/crm.js) se ne broje
 const licKom = (k) => { const n = Number(k.broj_licenci); return n > 0 ? n : 1; };
 function porodica(k) {
   const p = (k.naziv_proizvoda || "").trim();
