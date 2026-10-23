@@ -822,6 +822,18 @@ export default function HomePage() {
       () => deleteRow("akcije_firme", r.id)
     );
   };
+  // više firmi odjednom iz akcije (checkbox) — briše se nakon 5 s, može se poništiti
+  const removeAkcijeFirme = (lista) => {
+    const ids = new Set(lista.map((r) => r.id));
+    const items = akcijeFirme.filter((x) => ids.has(x.id));
+    if (!items.length) return;
+    setAkcijeFirme((prev) => prev.filter((x) => !ids.has(x.id)));
+    scheduleUndoDelete(
+      items.length === 1 ? `${items[0].firma} (iz akcije)` : `${items.length} firmi iz akcije`,
+      () => setAkcijeFirme((prev) => [...items, ...prev]),
+      () => bulkDeleteRows("akcije_firme", items.map((x) => x.id))
+    );
+  };
   const akcijaUForecast = async (r, payload, vrijednost) => {
     const ts = new Date().toISOString();
     const rec = await addForecast({ ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
@@ -1292,6 +1304,7 @@ export default function HomePage() {
                   onZapis={(r, zapis) => updateAkcijaFirma(r.id, {}, "Zapis dodan", { zapis })}
                   onForecast={akcijaUForecast}
                   onRemoveFirma={removeAkcijaFirma}
+                  onRemoveFirme={removeAkcijeFirme}
                   onKalkulator={otvoriKalkulator}
                   onViewCompany={setViewingCompany}
                   showToast={showToast}
