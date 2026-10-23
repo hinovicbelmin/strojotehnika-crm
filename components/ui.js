@@ -1,13 +1,16 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { X, Search, Upload, Trash2, FileSpreadsheet, ClipboardPaste, Clock, MessageCircle, Flame, CheckCircle2, XCircle } from "lucide-react";
+import { X, Search, Upload, Trash2, FileSpreadsheet, ClipboardPaste, Clock, MessageCircle, Flame, CheckCircle2, XCircle, Target } from "lucide-react";
 import * as XLSX from "xlsx";
 import { btnGhostIcon, btnPrimary, btnSecondary, inputCls, fmtDate, STATUS_BOJE } from "../lib/crm";
 
 const FORECAST_STATUS_ICONS = {
   "Na čekanju": Clock,
+  Potencijal: Target,
+  Pregovori: MessageCircle,
   "U pregovorima": MessageCircle,
   "Near Win": Flame,
+  Prodano: CheckCircle2,
   Dobijeno: CheckCircle2,
   Izgubljeno: XCircle,
   // Stare oznake (prije preimenovanja) — isti izgled dok se stavke ne ažuriraju
@@ -20,7 +23,7 @@ export function ForecastStatusBadge({ status }) {
   const cls = STATUS_BOJE[status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400";
   return (
     <span className={"inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full whitespace-nowrap " + cls}>
-      {Icon && <Icon size={11} />} {status}
+      {Icon && <Icon size={11} />} {status === "U pregovorima" ? "Pregovori" : status === "Dobijeno" || status === "Dobijen" ? "Prodano" : status === "Izgubljen" ? "Izgubljeno" : status}
     </span>
   );
 }
