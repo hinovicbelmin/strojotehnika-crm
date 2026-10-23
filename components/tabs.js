@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import {
   COLLEAGUE_NAMES, PRODAJA_MARKETING_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
-  FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth,
+  FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth, normForecastStatus,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
   getColleagueDept, getForecastStatusWeight, isForecastWon, isForecastLost,
@@ -153,7 +153,7 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
   const forecastOvogMjeseca = (forecast || []).filter((f) => f.mjesec === tekuciMjesec);
   const forecastChartData = FORECAST_STATUSI.map((s) => ({
     status: s,
-    broj: forecastOvogMjeseca.filter((f) => f.status === s).length,
+    broj: forecastOvogMjeseca.filter((f) => normForecastStatus(f.status) === s).length,
   }));
   const ocekivanaProdaja = Math.round(
     forecastOvogMjeseca.reduce((sum, f) => sum + (Number(f.broj_licenci) || 0) * getForecastStatusWeight(f.status), 0)
