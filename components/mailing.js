@@ -397,7 +397,7 @@ export function MailingIzvozModal({
             <div>
               <div className={CAP + " mb-1"}>2 · Izostavi</div>
               <Cb on={f.xKupili} onChange={set("xKupili")} n={pr.kupili}
-                sub="Dobijeno u Forecastu, nova licenca u Kupcima ili „Dobijen“ u Bazi potencijala">
+                sub="Prodano u Forecastu, nova licenca u Kupcima ili „Dobijen“ u Bazi potencijala">
                 <span className="inline-flex items-center gap-1.5">Kupili u zadnjih
                   <input type="number" min="1" max="730" value={f.kupiliDana} aria-label="Broj dana"
                     onChange={(e) => set("kupiliDana")(Math.max(1, Number(e.target.value) || 30))}
