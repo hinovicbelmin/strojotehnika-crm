@@ -86,7 +86,7 @@ function periodTekst(a) {
   if (!a.pocetak && !a.kraj) return "bez perioda";
   return `${a.pocetak ? fmtDate(a.pocetak) : "…"} – ${a.kraj ? fmtDate(a.kraj) : "…"}`;
 }
-// status firme; stavka u forecastu označena kao "Dobijeno" računa se kao dobijena
+// status firme; stavka u forecastu označena kao "Prodano" računa se kao dobijena
 function efStatus(r, fcById) {
   const fc = r.forecast_id ? fcById.get(String(r.forecast_id)) : null;
   if (fc && isForecastWon(fc.status)) return "Dobijeno";
@@ -630,7 +630,7 @@ function ForecastModal({ r, akcija, potencijal, onClose, onSave }) {
     softver: FORECAST_SOFTVERI.includes(porodica) ? porodica : "SOLIDWORKS",
     tip_licence: zakup ? "YLC" : "PLC",
     broj_licenci: r.broj_licenci != null ? String(r.broj_licenci) : "",
-    status: "U pregovorima",
+    status: "Pregovori",
     vrijednost: r.vrijednost != null ? String(r.vrijednost) : "",
     napomena: `Akcija: ${akcija.naziv}`,
   });
@@ -671,7 +671,7 @@ function ForecastModal({ r, akcija, potencijal, onClose, onSave }) {
       </div>
       <label className="block mt-3"><Lbl>Napomena</Lbl><input className={sel} value={f.napomena} onChange={set("napomena")} /></label>
       <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-3">
-        Stavka se pravi u Forecastu{FORECAST_PRODAVACI.includes(r.prodavac) ? ` (prodavač: ${r.prodavac})` : ""}. Kad je tamo označiš kao „Dobijeno“, i u akciji se računa kao dobijena.
+        Stavka se pravi u Forecastu{FORECAST_PRODAVACI.includes(r.prodavac) ? ` (prodavač: ${r.prodavac})` : ""}. Kad je tamo označiš kao „Prodano“, i u akciji se računa kao dobijena.
       </p>
     </BigModal>
   );
@@ -773,7 +773,7 @@ function FirmaPanel({ r, akcija, fcById, potencijal, kalkulacije, currentUser, o
                   : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-red-300")}>
                 <X size={12} /> Nije zainteresovana
               </button>
-              {fc && isForecastWon(fc.status) && r.status !== "Dobijeno" && <span className="text-[11.5px] text-green-700 dark:text-green-400">dobijeno u Forecastu</span>}
+              {fc && isForecastWon(fc.status) && r.status !== "Dobijeno" && <span className="text-[11.5px] text-green-700 dark:text-green-400">prodano u Forecastu</span>}
             </div>
             {st === "Nije zainteresovana" && (
               <input className={inputCls + " !py-1.5 mt-2 text-[13px]"} placeholder="Razlog (npr. prešli na drugi softver) — Enter"
@@ -1035,9 +1035,11 @@ function sortKljuc(r, st) {
   return 2;
 }
 
+const DRZ_KOD = { BiH: "BA", Hrvatska: "HR", Albanija: "AL", Ostalo: "OST" };
+
 function AkcijaDetalj({
   a, rows, fcById, potMap, kupci, potencijali, kalkulacije, currentUser, canManage,
-  onBack, onEdit, onToggleZavrsena, onDelete, onAddFirme, onUpdate, onZapis, onForecast, onKalkulator, onRemove, onViewCompany, showToast,
+  onBack, onEdit, onToggleZavrsena, onDelete, onAddFirme, onUpdate, onZapis, onForecast, onKalkulator, onRemove, onRemoveVise, onViewCompany, showToast,
   mailingIzvozi = [], onOpenMailing, onMailPoslan,
 }) {
   const imaMoje = rows.some((r) => r.prodavac === currentUser);
@@ -1052,20 +1054,35 @@ function AkcijaDetalj({
   }, [zadnjiIzvoz, rows, fcById]);
   const [fProd, setFProd] = useState(imaMoje ? currentUser : "Svi");
   const [fStatus, setFStatus] = useState("Svi");
+  const [fDrz, setFDrz] = useState("Sve");
   const [q, setQ] = useState("");
   const [panelId, setPanelId] = useState(null);
+  const [odabrane, setOdabrane] = useState(() => new Set());
+  const [potvrdaBrisanja, setPotvrdaBrisanja] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [showDodaj, setShowDodaj] = useState(false);
   const [showIzv, setShowIzv] = useState(false);
   const [fcRow, setFcRow] = useState(null);
-  useEffect(() => { setPage(1); }, [fProd, fStatus, q]);
+  useEffect(() => { setPage(1); setOdabrane(new Set()); setPotvrdaBrisanja(false); }, [fProd, fStatus, fDrz, q]);
+  // odabrane firme koje više nisu u akciji (obrisane) — izbaci iz odabira
+  useEffect(() => {
+    setOdabrane((prev) => {
+      if (!prev.size) return prev;
+      const ids = new Set(rows.map((r) => r.id));
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
 
   const prodavaci = useMemo(() => {
     const s = new Set(rows.map((r) => r.prodavac || "Nedodijeljeno"));
     return [...s].sort((x, y) => (x === "Nedodijeljeno") - (y === "Nedodijeljeno") || x.localeCompare(y, "hr"));
   }, [rows]);
-  const uOpsegu = useMemo(() => rows.filter((r) => fProd === "Svi" || (r.prodavac || "Nedodijeljeno") === fProd), [rows, fProd]);
+  // država firme: iz akcije, a ako je nema — iz Baze potencijala
+  const drzavaOf = (r) => drzavaGrupa(r.drzava || (potMap.get(r.firma_key) || {}).drzava || "");
+  const uOpsegu = useMemo(() => rows.filter((r) => (fProd === "Svi" || (r.prodavac || "Nedodijeljeno") === fProd)
+    && (fDrz === "Sve" || drzavaOf(r) === DRZ_KOD[fDrz])), [rows, fProd, fDrz, potMap]); // eslint-disable-line react-hooks/exhaustive-deps
   const s = useMemo(() => statistikaAkcije(uOpsegu, fcById), [uOpsegu, fcById]);
   const qq = q.trim().toLowerCase();
   const lista = useMemo(() => uOpsegu
@@ -1080,7 +1097,11 @@ function AkcijaDetalj({
   const panelRow = panelId ? rows.find((r) => r.id === panelId) : null;
   const postojeci = useMemo(() => new Set(rows.map((r) => r.firma_key)), [rows]);
   const aktivna = akcijaAktivna(a);
-  const G = "md:grid-cols-[26px_minmax(0,1.5fr)_minmax(0,150px)_170px_minmax(0,1fr)_84px_130px]";
+  const G = "md:grid-cols-[20px_26px_minmax(0,1.5fr)_minmax(0,150px)_170px_minmax(0,1fr)_84px_130px]";
+  const sveOdabrane = lista.length > 0 && lista.every(({ r }) => odabrane.has(r.id));
+  const toggleOdabrana = (id) => setOdabrane((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleSve = () => setOdabrane(sveOdabrane ? new Set() : new Set(lista.map(({ r }) => r.id)));
+  const chk = "w-4 h-4 rounded accent-teal-600 cursor-pointer";
 
   return (
     <div className="space-y-4">
@@ -1155,9 +1176,33 @@ function AkcijaDetalj({
             <SearchBox value={q} onChange={setQ} placeholder="Traži firmu ili zapis…" />
             <FilterPill label="Prodavač" value={fProd} defaultValue="Svi" options={["Svi", ...prodavaci]} onChange={setFProd} />
             <FilterPill label="Status" value={fStatus} defaultValue="Svi" options={["Svi", ...A_STATUSI]} onChange={setFStatus} />
+            <FilterPill label="Država" value={fDrz} defaultValue="Sve" options={["Sve", "BiH", "Hrvatska", "Albanija", "Ostalo"]} onChange={setFDrz} />
             <span className="flex-1" />
             <span className="text-xs text-slate-500 dark:text-slate-400 hidden lg:inline">Redoslijed: podsjetnici za danas, pa nekontaktirane</span>
           </div>
+
+          {odabrane.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 bg-teal-600 text-white rounded-xl px-4 py-2.5 shadow-sm">
+              <span className="text-sm font-semibold">{fmtN(odabrane.size)} {odabrane.size === 1 ? "firma odabrana" : "firmi odabrano"}</span>
+              <span className="flex-1" />
+              {potvrdaBrisanja ? (
+                <span className="flex flex-wrap items-center gap-2 text-sm">
+                  Obrisati {fmtN(odabrane.size)} iz akcije? (može se poništiti 5 s)
+                  <button type="button" className="rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 text-sm font-semibold"
+                    onClick={() => { const sel = rows.filter((r) => odabrane.has(r.id)); if (panelId && odabrane.has(panelId)) setPanelId(null); setOdabrane(new Set()); setPotvrdaBrisanja(false); onRemoveVise(sel); }}>
+                    Da, obriši
+                  </button>
+                  <button type="button" className="text-teal-100 hover:text-white hover:underline" onClick={() => setPotvrdaBrisanja(false)}>Ne</button>
+                </span>
+              ) : (
+                <button type="button" disabled={!onRemoveVise} onClick={() => setPotvrdaBrisanja(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 border border-white/30 px-3 py-1.5 text-sm font-semibold">
+                  <Trash2 size={14} /> Obriši iz akcije
+                </button>
+              )}
+              <button type="button" className="text-sm text-teal-100 hover:text-white hover:underline" onClick={() => { setOdabrane(new Set()); setPotvrdaBrisanja(false); }}>Poništi izbor</button>
+            </div>
+          )}
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
             {lista.length === 0 ? (
@@ -1169,6 +1214,8 @@ function AkcijaDetalj({
             ) : (
               <>
                 <div className={"hidden md:grid gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 " + G}>
+                  <input type="checkbox" className={chk} checked={sveOdabrane} onChange={toggleSve}
+                    aria-label={`Odaberi sve firme (${lista.length})`} title={`Odaberi sve (${lista.length}, sve stranice)`} />
                   <span /><span>Firma</span><span>Licence</span><span>Status</span><span>Zadnji kontakt</span><span>Podsjetnik</span><span>Forecast</span>
                 </div>
                 {stranica.map(({ r, st }) => {
@@ -1179,8 +1226,9 @@ function AkcijaDetalj({
                   const sel = panelId === r.id;
                   return (
                     <div key={r.id} onClick={() => setPanelId(sel ? null : r.id)}
-                      className={"grid grid-cols-[26px_minmax(0,1fr)_auto] gap-x-3 gap-y-1 items-center px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 first:border-t-0 cursor-pointer transition-colors " + G + " " +
-                        (sel ? "bg-teal-50/70 dark:bg-teal-950/30 shadow-[inset_3px_0_0_0_#0d9488]" : "hover:bg-slate-50 dark:hover:bg-slate-800/40")}>
+                      className={"grid grid-cols-[20px_26px_minmax(0,1fr)_auto] gap-x-3 gap-y-1 items-center px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 first:border-t-0 cursor-pointer transition-colors " + G + " " +
+                        (sel ? "bg-teal-50/70 dark:bg-teal-950/30 shadow-[inset_3px_0_0_0_#0d9488]" : odabrane.has(r.id) ? "bg-teal-50/40 dark:bg-teal-950/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/40")}>
+                      <input type="checkbox" className={chk} checked={odabrane.has(r.id)} onChange={() => toggleOdabrana(r.id)} onClick={(e) => e.stopPropagation()} aria-label={`Odaberi ${r.firma}`} />
                       {r.prodavac ? <Avatar name={r.prodavac} size="sm" /> : <span title="Nedodijeljeno" className="w-6 h-6 rounded-full border border-dashed border-slate-300 dark:border-slate-600" />}
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{r.firma}</div>
@@ -1192,7 +1240,7 @@ function AkcijaDetalj({
                       <div className="md:hidden"><StatusSelect value={r.status in STATUS_STIL ? r.status : "Nije kontaktirana"} onChange={(v) => onUpdate(r, { status: v })} /></div>
                       <div className="hidden md:block min-w-0"><LicenceChip r={r} /></div>
                       <div className="hidden md:block">
-                        {st !== r.status ? <span title="Dobijeno u Forecastu"><StatusPill status={st} /></span>
+                        {st !== r.status ? <span title="Prodano u Forecastu"><StatusPill status={st} /></span>
                           : <StatusSelect value={st} onChange={(v) => onUpdate(r, { status: v })} />}
                       </div>
                       <div className="hidden md:block min-w-0 text-[12.5px] text-slate-700 dark:text-slate-300 truncate" title={z ? z.opis : undefined}>
@@ -1221,7 +1269,7 @@ function AkcijaDetalj({
             )}
           </div>
           {rows.length > 0 && (
-            <Napomena>„Šta je dogovoreno“ iz panela firme upisuje se i u historiju firme u Bazi potencijala (s oznakom akcije). Stavka prebačena u Forecast i tamo označena kao „Dobijeno“ računa se kao dobijena i ovdje.</Napomena>
+            <Napomena>„Šta je dogovoreno“ iz panela firme upisuje se i u historiju firme u Bazi potencijala (s oznakom akcije). Stavka prebačena u Forecast i tamo označena kao „Prodano“ računa se kao dobijena i ovdje.</Napomena>
           )}
         </div>
 
@@ -1293,7 +1341,7 @@ function AkcijaKartica({ a, rows, fcById, currentUser, onOpen }) {
 
 export function AkcijeTab({
   akcije = [], akcijeFirme = [], kupci = [], potencijali = [], forecast = [], kalkulacije = [], currentUser,
-  onSaveAkcija, onDeleteAkcija, onAddFirme, onUpdateFirma, onZapis, onForecast, onRemoveFirma, onKalkulator, onViewCompany, showToast,
+  onSaveAkcija, onDeleteAkcija, onAddFirme, onUpdateFirma, onZapis, onForecast, onRemoveFirma, onRemoveFirme, onKalkulator, onViewCompany, showToast,
   mailingIzvozi = [], onOpenMailing, onMailPoslan,
 }) {
   const [otvorenaId, setOtvorenaId] = useState(null);
@@ -1339,7 +1387,7 @@ export function AkcijeTab({
         onToggleZavrsena={(v) => onSaveAkcija(otvorena.id, { zavrsena: v })}
         onDelete={() => { setOtvorenaId(null); onDeleteAkcija(otvorena.id); }}
         onAddFirme={onAddFirme} onUpdate={onUpdateFirma} onZapis={(r, zapis) => onZapis(r, zapis, otvorena)}
-        onForecast={onForecast} onKalkulator={onKalkulator} onRemove={onRemoveFirma} onViewCompany={onViewCompany} showToast={showToast}
+        onForecast={onForecast} onKalkulator={onKalkulator} onRemove={onRemoveFirma} onRemoveVise={onRemoveFirme} onViewCompany={onViewCompany} showToast={showToast}
         mailingIzvozi={mailingIzvozi} onOpenMailing={onOpenMailing} onMailPoslan={onMailPoslan} />
     );
   } else {
