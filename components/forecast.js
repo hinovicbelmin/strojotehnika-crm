@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Pencil, ChevronLeft, ChevronRight, TrendingUp, Target, Download, Copy, ExternalLink, Upload, Square, CheckSquare, List, LayoutGrid, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
-  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, FORECAST_STATUS_HEX, getForecastStatusWeight, isForecastWon, isForecastLost,
+  FORECAST_PRODAVACI, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE, FORECAST_STATUSI, FORECAST_STATUS_HEX, getForecastStatusWeight, isForecastWon, isForecastLost, normForecastStatus,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   currentMonthStr, fmtMonth, downloadCSV, parseMonthFlexible, fuzzyMatchFromList, buildCompanyNameIndex, matchCompanyName, findCompanyMatch,
 } from "../lib/crm";
@@ -15,7 +15,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cart
 
 function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci, onSave, onClose }) {
   const [f, setF] = useState(
-    initial || {
+    (initial && { ...initial, status: normForecastStatus(initial.status) }) || {
       mjesec: defaultMjesec,
       prodavac: "",
       kupac: "",
@@ -94,7 +94,7 @@ function ForecastForm({ initial, currentUser, defaultMjesec, potencijali, kupci,
         </Field>
         <Field label="Status" hint={`% šanse: ${Math.round(getForecastStatusWeight(f.status) * 100)}%`}>
           <select className={inputCls} value={f.status} onChange={set("status")}>
-            {FORECAST_STATUSI.map((s) => <option key={s}>{s}</option>)}
+            {FORECAST_STATUSI.map((s) => <option key={s} value={s}>{s} ({Math.round(getForecastStatusWeight(s) * 100)}%)</option>)}
           </select>
         </Field>
       </div>
@@ -161,17 +161,8 @@ function TrendChart({ data, theme }) {
 /*  KANBAN PRIKAZ                                                         */
 /* ---------------------------------------------------------------------- */
 
-// Stari nazivi statusa se prikazuju u odgovarajućoj novoj koloni
-const LEGACY_TO_KANBAN = {
-  "Novi kontakt": "Na čekanju",
-  "Ponuda poslana": "U pregovorima",
-  Dobijen: "Dobijeno",
-  Izgubljen: "Izgubljeno",
-};
-function kanbanColumnOf(status) {
-  if (FORECAST_STATUSI.includes(status)) return status;
-  return LEGACY_TO_KANBAN[status] || "Na čekanju";
-}
+// Stari nazivi statusa (U pregovorima, Dobijeno…) se prikazuju u odgovarajućoj novoj koloni
+const kanbanColumnOf = (status) => normForecastStatus(status);
 
 const AVATAR_BOJE = [
   "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
@@ -227,7 +218,7 @@ function ForecastKanban({ items, currentUser, onUpdate, onEdit, onViewCompany })
 
   return (
     <div className="overflow-x-auto mb-6 -mx-1 px-1 pb-1">
-      <div className="grid grid-cols-5 gap-3 min-w-[1080px] items-start">
+      <div className="grid grid-cols-6 gap-3 min-w-[1260px] items-start">
         {columns.map(({ status, list, licenci }) => {
           const hex = FORECAST_STATUS_HEX[status] || "#94a3b8";
           const isOver = overCol === status;
@@ -247,7 +238,7 @@ function ForecastKanban({ items, currentUser, onUpdate, onEdit, onViewCompany })
               <div className="flex items-center justify-between px-1 pb-2.5">
                 <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: hex }} />
-                  {status}
+                  {status} <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{Math.round(getForecastStatusWeight(status) * 100)}%</span>
                 </span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: hex + "22", color: hex }} title={`${list.length} stavki · ${licenci} licenci`}>
                   {list.length}
@@ -735,7 +726,7 @@ export function ForecastTab({ data, potencijali, kupci, currentUser, onAdd, onUp
               softver: fuzzyMatchFromList(r[3], FORECAST_SOFTVERI),
               tip_licence: fuzzyMatchFromList(r[4], FORECAST_TIPOVI_LICENCE),
               broj_licenci: r[5] ? Number(r[5]) : null,
-              status: fuzzyMatchFromList(r[6], FORECAST_STATUSI) || "Na čekanju",
+              status: normForecastStatus(fuzzyMatchFromList(r[6], [...FORECAST_STATUSI, "U pregovorima", "Dobijeno"]) || "Na čekanju"),
               napomena: r[7] || "",
               created_by: currentUser || "Uvoz", created_at: ts,
               updated_by: currentUser || "Uvoz", updated_at: ts,
