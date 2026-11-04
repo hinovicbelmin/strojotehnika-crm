@@ -69,7 +69,7 @@ export function opisFiltera(f, akcije = []) {
 /*
  * Model izvoza: firme koje prolaze filtere, razlozi izostavljanja i osobe s mailom.
  */
-export function izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f }) {
+export function izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f, kupciKontakti = [] }) {
   const kupciMap = kupciPoFirmi(kupci);
   const potMap = new Map();
   for (const p of potencijali || []) {
@@ -77,6 +77,14 @@ export function izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFir
     if (!k) continue;
     if (!potMap.has(k)) potMap.set(k, []);
     potMap.get(k).push(p);
+  }
+  // kontakti firmi koje nisu u Bazi potencijala (upisani u tabu Kontakti)
+  const kkMap = new Map();
+  for (const kk of kupciKontakti || []) {
+    const k = kk.firma_key || companyKey(kk.firma);
+    if (!k) continue;
+    if (!kkMap.has(k)) kkMap.set(k, []);
+    kkMap.get(k).push(kk);
   }
   let keys;
   if (f.izvor === "Baza potencijala") keys = [...potMap.keys()];
@@ -148,6 +156,7 @@ export function izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFir
       if (p.kontakt_osoba || p.email) kontakti.push({ ime: p.kontakt_osoba || "", funkcija: p.kontakt_funkcija || "", email: p.email || "", glavni: p === pot });
       for (const k of p.dodatni_kontakti || []) kontakti.push({ ime: k.ime || "", funkcija: k.funkcija || "", email: k.email || "", glavni: false });
     }
+    for (const kk of kkMap.get(key) || []) kontakti.push({ ime: kk.ime || "", funkcija: kk.funkcija || "", email: kk.email || "", glavni: !kontakti.length });
     let izbor = kontakti.filter((k) => prviMail(k.email));
     if (f.osobe === "glavni") {
       const g = izbor.find((k) => k.glavni) || izbor[0];
@@ -252,7 +261,7 @@ const CAP = "text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:
 /* ---------------------------------------------------------------------- */
 
 export function MailingIzvozModal({
-  kupci = [], potencijali = [], forecast = [], akcije = [], akcijeFirme = [], odjave = [], filteri = [], izvozi = [],
+  kupci = [], potencijali = [], forecast = [], akcije = [], akcijeFirme = [], odjave = [], filteri = [], izvozi = [], kupciKontakti = [],
   presetAkcija = null, currentUser, onClose, onSaveFilter, onDeleteFilter, onLogExport, showToast,
 }) {
   const [f, setF] = useState(() => (presetAkcija ? { ...POCETNI_FILTER, akcija: presetAkcija.id } : { ...POCETNI_FILTER }));
@@ -272,8 +281,8 @@ export function MailingIzvozModal({
   useEffect(() => { setPage(1); }, [f, q, sveIzost]);
 
   const set = (k) => (v) => { setF((x) => ({ ...x, [k]: v })); setAktivniFilter(null); };
-  const model = useMemo(() => izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f }),
-    [kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f]);
+  const model = useMemo(() => izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f, kupciKontakti }),
+    [kupci, potencijali, forecast, akcije, akcijeFirme, odjave, f, kupciKontakti]);
   const ukljuceni = useMemo(() => model.osobe.filter((o) => !o.razlog && !rucno.has(o.email)), [model, rucno]);
   const nFirmi = useMemo(() => new Set(ukljuceni.map((o) => o.firmaKey)).size, [ukljuceni]);
   const izostFirmi = useMemo(() => new Set(model.osobe.filter((o) => o.razlog && o.razlog !== "odjava").map((o) => o.firmaKey)).size, [model]);
