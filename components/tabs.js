@@ -1583,7 +1583,7 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
     if (gs.length === 0) return <span className="text-xs text-slate-400">—</span>;
     const vidljive = gs.slice(0, 3), ostale = gs.slice(3);
     return (
-      <div className="flex flex-nowrap items-center gap-1.5 min-w-0">
+      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
         {vidljive.map((g) => {
           const [cls, dot] = PORODICA_STIL[g.f] || PORODICA_STIL.Ostalo;
           const lista = [...g.proizvodi.entries()].sort((a, b) => b[1] - a[1]);
@@ -1744,8 +1744,8 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                               {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                             </span>
                           </td>
-                          <td className="px-3.5 py-2.5 max-w-[280px]">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{f.naziv}</div>
+                          <td className="px-3.5 py-2.5 max-w-[280px] min-w-[170px]">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 line-clamp-2 break-words" title={f.naziv}>{f.naziv}</div>
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lokacija(f.grad, f.drzava)}</div>
                             {nadogradnjeInfo && nadogradnjeInfo.get(f.key) && <div className="mt-1"><NadogradnjaBadge info={nadogradnjeInfo.get(f.key)} /></div>}
                           </td>
@@ -1775,7 +1775,10 @@ export function KupciTab({ data, potencijali = [], nadogradnjeInfo, currentUser,
                         open && (
                           <tr key={f.key + "-d"} className="bg-teal-50/60 dark:bg-teal-900/20">
                             <td className="shadow-[inset_3px_0_0_0_#0d9488]" />
-                            <td colSpan={7} className="pr-4 pb-3 pt-0.5">{licenceDetalji(f)}</td>
+                            <td colSpan={7} className="pr-4 pb-3 pt-0.5">
+                              {/* w-0 min-w-full: detalji se prilagode širini tabele i ne šire je (inače kolona Prodavač ode van vidnog polja) */}
+                              <div className="w-0 min-w-full">{licenceDetalji(f)}</div>
+                            </td>
                           </tr>
                         ),
                       ];
