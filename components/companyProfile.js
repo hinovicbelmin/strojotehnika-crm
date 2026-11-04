@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle, Copy, Check } from "lucide-react";
-import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca } from "../lib/crm";
+import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca, vrstaLicence, swDodatak } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
 import { KalendarFirmeSekcija } from "./kalendar";
 import { IzvorOznaka, izvorOdOsobe } from "./kontakti";
@@ -180,9 +180,15 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
                 <div key={k.id} className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 text-sm">
                   <div className="min-w-0">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{k.__displayName}</span>
+                    {swDodatak(k) && <span className="ml-1.5 inline-flex items-center px-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10.5px] font-semibold text-slate-600 dark:text-slate-300 align-middle">{swDodatak(k)}</span>}
                     <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">{k.broj_licenci ? `${k.broj_licenci} lic.` : ""}</span>
                     <div className="text-xs text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <SerijskiBroj sn={k.serijski_broj} />
+                      {vrstaLicence(k) !== "Komercijalna" && (
+                        <span className={"text-[10px] font-bold px-1.5 rounded border " + (vrstaLicence(k) === "Research"
+                          ? "bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900"
+                          : "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900")}>{vrstaLicence(k)}</span>
+                      )}
                       {k.serijski_broj && <span aria-hidden="true">·</span>}
                       <span>{fmtDate(k.start_date)} / {fmtDate(k.end_date)}</span>
                     </div>
