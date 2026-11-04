@@ -1,11 +1,13 @@
 "use client";
-// Kontakti — kontakt osobe kupaca za tehničku podršku (samo pregled) + prijedlozi izmjena koje prodavač potvrđuje
+// Kontakti — kontakt osobe kupaca. Tehnička podrška i prodaja kontakte dodaju i mijenjaju direktno;
+// kad izmjenu napravi neko drugi, prodavač firme dobija obavijest (Podsjetnici, Baza potencijala).
+// Svaki kontakt ima izvor: Prodaja ili Podrška.
 import { useState, useMemo, useEffect } from "react";
 import {
-  Users, Phone, Mail, Copy, Check, X, Lock, Download, ExternalLink, Building2, Wrench, ArrowUpCircle, UserPlus,
-  Send, Pencil, UserX, Inbox, Ban,
+  Users, Phone, Mail, Copy, Check, X, Download, ExternalLink, Building2, Wrench, ArrowUpCircle, UserPlus,
+  Pencil, UserX, Inbox, Ban, Bell,
 } from "lucide-react";
-import { inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, downloadCSV, jeGlavnaLicenca } from "../lib/crm";
+import { inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, downloadCSV, jeGlavnaLicenca, getColleagueDept } from "../lib/crm";
 import { EmptyState, SearchBox } from "./ui";
 import { Avatar, PanelLabel, PageNav, headerBtnSec, fmtN, initials } from "./crmBits";
 import { drzavaGrupa, TEHNICAR_PO_DRZAVI } from "./nadogradnje";
@@ -54,13 +56,36 @@ function licenceFirme(rows) {
   return { grupe, aktivno, do: maxAkt || maxSve };
 }
 
-// opis prijedloga u jednoj rečenici
+/* ---------- Izvor kontakta: Prodaja ili Podrška ---------- */
+export const IZVORI_KONTAKTA = ["Prodaja", "Podrška"];
+export const izvorOdOsobe = (ime) => (getColleagueDept(ime) === "Tehnička podrška" ? "Podrška" : "Prodaja");
+// dodatni kontakt (iz dodatni_kontakti): zapisani izvor, a za starije zapise — prema tome ko ga je dodao
+export const izvorDodatnog = (k) => (k && (k.izvor === "Podrška" || k.izvor === "Prodaja") ? k.izvor : k && k.dodao ? izvorOdOsobe(k.dodao) : "Prodaja");
+// glavni kontakt (kolone na potencijalu)
+export const izvorGlavnog = (p) => (p && p.kontakt_izvor === "Podrška" ? "Podrška" : "Prodaja");
+const IZVOR_CLS = {
+  Prodaja: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900",
+  Podrška: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900",
+};
+export function IzvorOznaka({ izvor, ko, napomena }) {
+  const iz = izvor === "Podrška" ? "Podrška" : "Prodaja";
+  const t = [iz === "Podrška" ? "Kontakt od tehničke podrške" : "Kontakt od prodaje", ko ? `dodao: ${ko}` : "", napomena || ""].filter(Boolean).join(" · ");
+  return (
+    <span title={t} className={"inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap " + IZVOR_CLS[iz]}>
+      {iz === "Podrška" ? <Wrench size={10} /> : <Users size={10} />}{iz}
+    </span>
+  );
+}
+
+// opis prijedloga / obavijesti u jednoj rečenici
 export function opisPrijedloga(pr) {
   const ref = pr.ref || {};
   if (pr.tip === "Osoba više ne radi") return `${ref.ime || pr.ime || "Kontakt"} više ne radi u firmi`;
   if (pr.tip === "Ispravka podataka") return `Ispravka kontakta ${ref.ime || pr.ime || ""}`.trim();
   return "Novi kontakt";
 }
+// stavka iz tabele kontakti_prijedlozi je obavijest (izmjena je već upisana), a ne prijedlog na čekanju
+export const jeObavijest = (pr) => pr && (pr.status === "Obavijest" || pr.status === "Pročitano");
 
 /*
  * Primjena prihvaćenog prijedloga na zapis u Bazi potencijala.
@@ -68,6 +93,8 @@ export function opisPrijedloga(pr) {
  */
 export function primijeniPrijedlog(pot, pr) {
   const ref = pr.ref || {};
+  const izvor = pr.izvor === "Podrška" || pr.izvor === "Prodaja" ? pr.izvor : izvorOdOsobe(pr.predlozio);
+  const danas = new Date().toISOString().slice(0, 10);
   const novo = { ime: (pr.ime || "").trim(), funkcija: (pr.funkcija || "").trim(), telefon: (pr.telefon || "").trim(), email: (pr.email || "").trim() };
   const dodatni = [...(pot.dodatni_kontakti || [])];
   const imaGlavni = !!(pot.kontakt_osoba || pot.telefon || pot.email);
@@ -75,8 +102,8 @@ export function primijeniPrijedlog(pot, pr) {
   const glavniJe = () => imaGlavni && (norm(pot.kontakt_osoba) === norm(ref.ime) && (norm(ref.ime) || norm(pot.email) === norm(ref.email)));
   const idxDod = () => dodatni.findIndex((k) => (norm(ref.ime) ? norm(k.ime) === norm(ref.ime) : (norm(ref.email) && norm(k.email) === norm(ref.email)) || (norm(ref.telefon) && norm(k.telefon) === norm(ref.telefon))));
   const dodajNovi = () => {
-    if (!imaGlavni) Object.assign(patch, { kontakt_osoba: novo.ime, kontakt_funkcija: novo.funkcija, telefon: novo.telefon, email: novo.email });
-    else dodatni.push({ ...novo, napomena: (pr.napomena || "").trim(), dodao: pr.predlozio || "" });
+    if (!imaGlavni) Object.assign(patch, { kontakt_osoba: novo.ime, kontakt_funkcija: novo.funkcija, telefon: novo.telefon, email: novo.email, kontakt_izvor: izvor });
+    else dodatni.push({ ...novo, napomena: (pr.napomena || "").trim(), dodao: pr.predlozio || "", izvor, dodano: danas });
   };
   let napomena = null;
   if (pr.tip === "Nova osoba") {
@@ -90,15 +117,15 @@ export function primijeniPrijedlog(pot, pr) {
       if (nonEmpty.email) patch.email = nonEmpty.email;
     } else {
       const i = idxDod();
-      if (i >= 0) dodatni[i] = { ...dodatni[i], ...nonEmpty };
+      if (i >= 0) dodatni[i] = { ...dodatni[i], ...nonEmpty, azurirao: pr.predlozio || "", azurirano: danas };
       else { dodajNovi(); napomena = "Kontakt za ispravku nije nađen — dodan je kao nova osoba"; }
     }
   } else if (pr.tip === "Osoba više ne radi") {
     if (ref.glavni && glavniJe()) {
       const sljedeci = dodatni.shift();
       Object.assign(patch, sljedeci
-        ? { kontakt_osoba: sljedeci.ime || "", kontakt_funkcija: sljedeci.funkcija || "", telefon: sljedeci.telefon || "", email: sljedeci.email || "" }
-        : { kontakt_osoba: "", kontakt_funkcija: "", telefon: "", email: "" });
+        ? { kontakt_osoba: sljedeci.ime || "", kontakt_funkcija: sljedeci.funkcija || "", telefon: sljedeci.telefon || "", email: sljedeci.email || "", kontakt_izvor: izvorDodatnog(sljedeci) }
+        : { kontakt_osoba: "", kontakt_funkcija: "", telefon: "", email: "", kontakt_izvor: null });
     } else {
       const i = idxDod();
       if (i >= 0) dodatni.splice(i, 1);
@@ -115,10 +142,39 @@ export function primijeniPrijedlog(pot, pr) {
 
 const PRIHVATI_LABEL = { "Nova osoba": "Dodaj u kontakte", "Ispravka podataka": "Primijeni ispravku", "Osoba više ne radi": "Ukloni kontakt" };
 
+const OBAVIJEST_GLAGOL = { "Nova osoba": "je dodao novi kontakt", "Ispravka podataka": "je ažurirao kontakt", "Osoba više ne radi": "je uklonio kontakt (više ne radi)" };
 export function PrijedlogKartica({ pr, canResolve, onResolve, showFirma = false, onViewCompany }) {
   const [busy, setBusy] = useState(false);
   const run = async (prihvati) => { setBusy(true); try { await onResolve(pr, prihvati); } catch (e) { /* toast je već prikazan */ } finally { setBusy(false); } };
   const ref = pr.ref || {};
+  if (jeObavijest(pr)) {
+    const izvor = pr.izvor || izvorOdOsobe(pr.predlozio);
+    return (
+      <div className={"flex gap-2.5 rounded-xl px-3 py-2.5 border " + (pr.status === "Obavijest" ? "bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900" : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 opacity-80")}>
+        <Avatar name={pr.predlozio || "?"} size="sm" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] text-sky-900 dark:text-sky-300 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <Bell size={11} /><b>{pr.predlozio || "—"}</b> {OBAVIJEST_GLAGOL[pr.tip] || "je izmijenio kontakt"} · {pr.created_at ? fmtDate(String(pr.created_at).slice(0, 10)) : ""}
+            <IzvorOznaka izvor={izvor} ko={pr.predlozio} />
+          </div>
+          {showFirma && (
+            <button type="button" onClick={() => onViewCompany && onViewCompany(pr.firma)} className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 hover:text-teal-700 truncate max-w-full block text-left">{pr.firma}</button>
+          )}
+          {pr.tip !== "Osoba više ne radi" ? (
+            <>
+              <div className="text-[13.5px] font-bold text-slate-900 dark:text-slate-100 mt-0.5">{[pr.ime || ref.ime, pr.funkcija].filter(Boolean).join(" · ") || "—"}</div>
+              {(pr.telefon || pr.email) && <div className="text-[12.5px] text-slate-600 dark:text-slate-400">{[pr.telefon, pr.email].filter(Boolean).join(" · ")}</div>}
+              {pr.tip === "Ispravka podataka" && ref.ime && <div className="text-[11.5px] text-slate-500 dark:text-slate-400">prije: {[ref.ime, ref.telefon, ref.email].filter(Boolean).join(" · ")}</div>}
+            </>
+          ) : <div className="text-[13.5px] font-bold text-slate-900 dark:text-slate-100 mt-0.5 line-through decoration-red-400">{[ref.ime, ref.funkcija].filter(Boolean).join(" · ")}</div>}
+          {pr.napomena && <div className="text-[12.5px] text-slate-600 dark:text-slate-400 italic mt-0.5">„{pr.napomena}“</div>}
+          {pr.status === "Obavijest" && canResolve ? (
+            <button type="button" disabled={busy} className={btnSecondary + " !py-1 !px-2.5 text-[12.5px] mt-2"} onClick={() => run(true)}><Check size={13} /> Vidio sam</button>
+          ) : pr.status === "Pročitano" ? <div className="text-[11.5px] text-slate-400 mt-1">pročitano{pr.rijesio ? ` · ${pr.rijesio}` : ""}</div> : null}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl px-3 py-2.5">
       <Avatar name={pr.predlozio || "?"} size="sm" />
@@ -153,7 +209,7 @@ export function PrijedlogKartica({ pr, canResolve, onResolve, showFirma = false,
 /*  Model: firme i kontakt osobe                                           */
 /* ---------------------------------------------------------------------- */
 
-function izgradiKontakte({ kupci, potencijali, nadFirme }) {
+function izgradiKontakte({ kupci, potencijali, nadFirme, kupciKontakti = [] }) {
   const firme = new Map();
   const firma = (key, naziv, drzava) => {
     if (!firme.has(key)) firme.set(key, { key, naziv, drzava: drzava || "", kupciRows: [], pots: [], nad: null, kontakti: [] });
@@ -173,6 +229,10 @@ function izgradiKontakte({ kupci, potencijali, nadFirme }) {
     f.pots.push(p);
   }
   for (const n of nadFirme || []) if (firme.has(n.key)) firme.get(n.key).nad = n;
+  for (const kk of kupciKontakti || []) {
+    const f = firme.get(kk.firma_key || companyKey(kk.firma));
+    if (f) (f.kk = f.kk || []).push(kk);
+  }
 
   for (const f of firme.values()) {
     f.grupa = drzavaGrupa(f.drzava);
@@ -190,14 +250,18 @@ function izgradiKontakte({ kupci, potencijali, nadFirme }) {
     };
     for (const p of f.pots) {
       if (p.kontakt_osoba || p.telefon || p.email) {
-        dodaj({ ime: p.kontakt_osoba || "", funkcija: p.kontakt_funkcija || "", telefon: p.telefon || "", email: p.email || "", izvor: "Baza potencijala", glavni: true, potId: p.id });
+        dodaj({ ime: p.kontakt_osoba || "", funkcija: p.kontakt_funkcija || "", telefon: p.telefon || "", email: p.email || "", izvor: izvorGlavnog(p), glavni: true, potId: p.id });
       }
       for (const k of p.dodatni_kontakti || []) {
-        dodaj({ ime: k.ime || "", funkcija: k.funkcija || "", telefon: k.telefon || "", email: k.email || "", izvor: k.dodao ? "Dodala podrška" : "Baza potencijala", dodao: k.dodao || "", glavni: false, potId: p.id });
+        dodaj({ ime: k.ime || "", funkcija: k.funkcija || "", telefon: k.telefon || "", email: k.email || "", izvor: izvorDodatnog(k), dodao: k.dodao || "", glavni: false, potId: p.id });
       }
     }
+    // kontakti upisani u tabu Kontakti za firme koje nisu u Bazi potencijala (prodavač se ne mijenja)
+    for (const kk of f.kk || []) {
+      dodaj({ ime: kk.ime || "", funkcija: kk.funkcija || "", telefon: kk.telefon || "", email: kk.email || "", izvor: kk.izvor === "Podrška" || kk.izvor === "Prodaja" ? kk.izvor : izvorOdOsobe(kk.dodao), dodao: kk.dodao || "", glavni: false, kkId: kk.id });
+    }
     const nr = f.nad ? f.nad.rec || f.nad.prev : null;
-    if (nr && (nr.kontakt || nr.mail)) dodaj({ ime: nr.kontakt || "", funkcija: "", telefon: "", email: nr.mail || "", izvor: "Nadogradnje", glavni: false });
+    if (nr && (nr.kontakt || nr.mail)) dodaj({ ime: nr.kontakt || "", funkcija: "", telefon: "", email: nr.mail || "", izvor: "Podrška", nad: true, glavni: false });
   }
   return firme;
 }
@@ -206,13 +270,8 @@ function izgradiKontakte({ kupci, potencijali, nadFirme }) {
 /*  Mali UI elementi                                                       */
 /* ---------------------------------------------------------------------- */
 
-const IZVOR_CLS = {
-  "Baza potencijala": "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
-  Nadogradnje: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-  "Dodala podrška": "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-};
 function IzvorChip({ k }) {
-  return <span title={k.dodao ? `Predložio: ${k.dodao}` : undefined} className={"text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap " + (IZVOR_CLS[k.izvor] || IZVOR_CLS["Baza potencijala"])}>{k.izvor}</span>;
+  return <IzvorOznaka izvor={k.izvor} ko={k.dodao} napomena={k.nad ? "iz tabele Nadogradnje" : ""} />;
 }
 function LicChips({ lic, max = 2 }) {
   if (!lic.grupe.length) return <span className="text-[11.5px] text-slate-400">nije kupac</span>;
@@ -244,17 +303,20 @@ function KopirajBtn({ text, label }) {
 const telHref = (t) => `tel:${firstOf(t).replace(/[^\d+]/g, "")}`;
 
 /* ---------------------------------------------------------------------- */
-/*  Prijedlog (novi / ispravka / više ne radi)                             */
+/*  Kontakt: novi / ispravka / više ne radi — upisuje se odmah            */
 /* ---------------------------------------------------------------------- */
 
-function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
+function KontaktModal({ f, pocetni, currentUser, onClose, onSave }) {
   const [tip, setTip] = useState(pocetni?.tip || "Nova osoba");
-  const [refIdx, setRefIdx] = useState(pocetni?.refIdx ?? (f.kontakti.length ? 0 : -1));
+  const kontaktiZaRef = f.kontakti.map((k, i) => ({ k, i })).filter(({ k }) => !k.nad);
+  const [refIdx, setRefIdx] = useState(pocetni?.refIdx ?? (kontaktiZaRef.length ? kontaktiZaRef[0].i : -1));
   const ref = refIdx >= 0 ? f.kontakti[refIdx] : null;
   const prazno = { ime: "", funkcija: "", telefon: "", email: "" };
   const [v, setV] = useState(() => (pocetni?.tip === "Ispravka podataka" && ref ? { ime: ref.ime, funkcija: ref.funkcija, telefon: ref.telefon, email: ref.email } : prazno));
   const [napomena, setNapomena] = useState("");
   const [busy, setBusy] = useState(false);
+  const izvor = izvorOdOsobe(currentUser);
+  const obavijest = !!f.prodavac && f.prodavac !== currentUser;
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -267,8 +329,8 @@ function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
   };
   const odaberiRef = (i) => {
     setRefIdx(i);
-    const r = f.kontakti[i];
-    if (tip === "Ispravka podataka" && r) setV({ ime: r.ime, funkcija: r.funkcija, telefon: r.telefon, email: r.email });
+    const k = f.kontakti[i];
+    if (tip === "Ispravka podataka" && k) setV({ ime: k.ime, funkcija: k.funkcija, telefon: k.telefon, email: k.email });
   };
   const trebaRef = tip !== "Nova osoba";
   const izmijenjeno = ref && ["ime", "funkcija", "telefon", "email"].some((k) => (v[k] || "").trim() !== (ref[k] || "").trim());
@@ -284,8 +346,8 @@ function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
         ime: tip === "Osoba više ne radi" ? null : v.ime.trim() || null, funkcija: tip === "Osoba više ne radi" ? null : v.funkcija.trim() || null,
         telefon: tip === "Osoba više ne radi" ? null : v.telefon.trim() || null, email: tip === "Osoba više ne radi" ? null : v.email.trim() || null,
         napomena: napomena.trim() || null,
-        ref: trebaRef && ref ? { ime: ref.ime, funkcija: ref.funkcija, telefon: ref.telefon, email: ref.email, glavni: !!ref.glavni, izvor: ref.izvor } : null,
-        prodavac: f.prodavac || null, predlozio: currentUser, status: "Na čekanju",
+        ref: trebaRef && ref ? { ime: ref.ime, funkcija: ref.funkcija, telefon: ref.telefon, email: ref.email, glavni: !!ref.glavni, izvor: ref.izvor, kkId: ref.kkId || null } : null,
+        prodavac: f.prodavac || null, predlozio: currentUser, izvor,
       });
       onClose();
     } catch (e) {
@@ -294,15 +356,16 @@ function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
       setBusy(false);
     }
   };
-  const kontaktiZaRef = f.kontakti.map((k, i) => ({ k, i })).filter(({ k }) => k.izvor !== "Nadogradnje");
+  const naslov = { "Nova osoba": "Dodaj kontakt", "Ispravka podataka": "Ispravi kontakt", "Osoba više ne radi": "Osoba više ne radi u firmi" }[tip];
+  const dugme = { "Nova osoba": "Sačuvaj kontakt", "Ispravka podataka": "Sačuvaj ispravku", "Osoba više ne radi": "Ukloni kontakt" }[tip];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/70 p-4 backdrop-blur-[2px]" onClick={onClose}>
       <div className="max-w-xl w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-h-[90vh] flex flex-col border border-transparent dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Javi prodavaču: novi ili pogrešan kontakt</h3>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
-              {f.naziv} · {f.prodavac ? <>prodavač <Avatar name={f.prodavac} size="sm" /> {f.prodavac}</> : "nema prodavača — ide prodaji (nedodijeljeno)"}
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{naslov}</h3>
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{f.naziv}</span> · {f.prodavac ? <>prodavač <Avatar name={f.prodavac} size="sm" /> {f.prodavac}</> : "nema prodavača"}
             </p>
           </div>
           <button type="button" onClick={onClose} className={btnGhostIcon} aria-label="Zatvori"><X size={18} /></button>
@@ -310,7 +373,7 @@ function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
         <div className="p-6 overflow-y-auto space-y-4">
           <div className="flex flex-wrap gap-1.5">
             {P_TIPOVI.map((t) => (
-              <button key={t} type="button" onClick={() => odaberiTip(t)} disabled={t !== "Nova osoba" && !kontaktiZaRef.length}
+              <button key={t} type="button" onClick={() => odaberiTip(t)} disabled={t !== "Nova osoba" && !kontaktiZaRef.length} aria-pressed={tip === t}
                 className={"h-8 px-3 rounded-lg text-[13px] disabled:opacity-40 " + (tip === t ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-semibold" : "border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300")}>
                 {t}
               </button>
@@ -335,15 +398,25 @@ function PrijedlogModal({ f, pocetni, currentUser, onClose, onSave }) {
             </div>
           )}
           <label className="block">
-            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Napomena za prodavača</span>
+            <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Napomena{obavijest ? " za prodavača" : ""}</span>
             <input className={inputCls} value={napomena} onChange={(e) => setNapomena(e.target.value)}
-              placeholder={tip === "Osoba više ne radi" ? "npr. ko je preuzeo licence" : "npr. preuzela licence od kolege"} />
+              placeholder={tip === "Osoba više ne radi" ? "npr. ko je preuzeo licence" : tip === "Nova osoba" ? "npr. krajnji korisnik, radi u konstrukciji" : "npr. promijenio broj telefona"} />
           </label>
-          <p className="text-[12px] text-teal-700 dark:text-teal-400">Prodavač dobije prijedlog u Bazi potencijala i u Podsjetnicima — kontakt se mijenja tek kad ga potvrdi.</p>
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-slate-600 dark:text-slate-400">
+            Izvor kontakta: <IzvorOznaka izvor={izvor} ko={currentUser} />
+            <span className="text-slate-400">({izvor === "Podrška" ? "tehnička podrška" : "prodaja"} — prema odjelu)</span>
+          </div>
+          <p className="text-[12px] text-teal-700 dark:text-teal-400 flex items-start gap-1.5">
+            <Bell size={13} className="mt-0.5 shrink-0" />
+            <span>Kontakt se odmah upisuje{f.pot ? " u Bazu potencijala" : " (firma nije u Bazi potencijala — kontakt se čuva uz kupca)"}. Prodavač firme se ne mijenja.{obavijest ? ` ${f.prodavac} dobija obavijest u Podsjetnicima — odobrenje nije potrebno.` : f.prodavac ? "" : " Firma nema prodavača, pa obavijest vidi cijela prodaja."}</span>
+          </p>
         </div>
         <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
           <button type="button" className={btnSecondary} onClick={onClose}>Otkaži</button>
-          <button type="button" className={btnPrimary} onClick={submit} disabled={!ok || busy}><Send size={14} /> {busy ? "Šaljem…" : "Pošalji prodavaču"}</button>
+          <button type="button" className={tip === "Osoba više ne radi" ? "inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50" : btnPrimary}
+            onClick={submit} disabled={!ok || busy}>
+            {tip === "Osoba više ne radi" ? <UserX size={14} /> : <Check size={14} />} {busy ? "Čuvam…" : dugme}
+          </button>
         </div>
       </div>
     </div>
@@ -354,7 +427,10 @@ const STATUS_P_CLS = {
   "Na čekanju": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   Prihvaćeno: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
   Odbijeno: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
+  Obavijest: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
+  Pročitano: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
 };
+const STATUS_P_TEKST = { Obavijest: "upisano · prodavač obaviješten", Pročitano: "upisano · prodavač vidio" };
 function MojiPrijedloziModal({ lista, onClose, onPovuci, onViewCompany }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -365,11 +441,11 @@ function MojiPrijedloziModal({ lista, onClose, onPovuci, onViewCompany }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/70 p-4 backdrop-blur-[2px]" onClick={onClose}>
       <div className="max-w-2xl w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-h-[85vh] flex flex-col border border-transparent dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Moji prijedlozi kontakata</h3>
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Moje izmjene kontakata</h3>
           <button type="button" onClick={onClose} className={btnGhostIcon} aria-label="Zatvori"><X size={18} /></button>
         </div>
         <div className="p-4 sm:p-6 overflow-y-auto">
-          {lista.length === 0 ? <p className="text-sm text-slate-500">Još nisi slao prijedloge.</p> : (
+          {lista.length === 0 ? <p className="text-sm text-slate-500">Još nisi dodavao ni mijenjao kontakte.</p> : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {lista.map((pr) => (
                 <div key={pr.id} className="py-2.5 flex items-start gap-3">
@@ -377,11 +453,11 @@ function MojiPrijedloziModal({ lista, onClose, onPovuci, onViewCompany }) {
                     <button type="button" onClick={() => onViewCompany && onViewCompany(pr.firma)} className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100 hover:text-teal-700 text-left">{pr.firma}</button>
                     <div className="text-[12.5px] text-slate-600 dark:text-slate-400">{opisPrijedloga(pr)}{pr.ime ? `: ${[pr.ime, pr.funkcija].filter(Boolean).join(" · ")}` : ""}</div>
                     <div className="text-[11.5px] text-slate-400">
-                      {pr.created_at ? fmtDate(String(pr.created_at).slice(0, 10)) : ""} · za {pr.prodavac || NEDODIJELJENO}
-                      {pr.rijesio ? ` · ${pr.status === "Prihvaćeno" ? "prihvatio" : "odbio"} ${pr.rijesio}${pr.rijeseno_at ? " " + fmtDate(String(pr.rijeseno_at).slice(0, 10)) : ""}` : ""}
+                      {pr.created_at ? fmtDate(String(pr.created_at).slice(0, 10)) : ""} · prodavač {pr.prodavac || NEDODIJELJENO}
+                      {pr.rijesio && !jeObavijest(pr) ? ` · ${pr.status === "Prihvaćeno" ? "prihvatio" : "odbio"} ${pr.rijesio}${pr.rijeseno_at ? " " + fmtDate(String(pr.rijeseno_at).slice(0, 10)) : ""}` : ""}
                     </div>
                   </div>
-                  <span className={"text-[11.5px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_P_CLS[pr.status] || STATUS_P_CLS["Na čekanju"])}>{pr.status}</span>
+                  <span className={"text-[11.5px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap " + (STATUS_P_CLS[pr.status] || STATUS_P_CLS["Na čekanju"])}>{STATUS_P_TEKST[pr.status] || pr.status}</span>
                   {pr.status === "Na čekanju" && <button type="button" className="text-xs text-slate-500 hover:text-red-600 whitespace-nowrap" onClick={() => onPovuci(pr)}>Povuci</button>}
                 </div>
               ))}
@@ -406,6 +482,7 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
   const intervencije = useMemo(() => podrska.filter((s) => companyKey(s.firma) === f.key)
     .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || ""))).slice(0, 3), [podrska, f.key]);
   const naCekanju = prijedlozi.filter((p) => p.firma_key === f.key && p.status === "Na čekanju");
+  const urediv = (k) => !!currentUser && !k.nad;
   const lokacija = [f.pot && f.pot.grad, f.drzava].filter(Boolean).join(" · ");
   return (
     <div className="fixed inset-0 z-40 bg-slate-900/40 dark:bg-black/60 xl:static xl:z-auto xl:bg-transparent xl:dark:bg-transparent" onClick={onClose}>
@@ -431,7 +508,7 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
           <div>
             <PanelLabel>Kontakt osobe · {f.kontakti.length}</PanelLabel>
             {f.kontakti.length === 0 ? (
-              <p className="text-[13px] text-slate-400">Nema unesenih kontakt osoba.</p>
+              <p className="text-[13px] text-slate-400">Nema unesenih kontakt osoba.{currentUser ? " Dodaj prvi kontakt dugmetom ispod." : ""}</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {f.kontakti.map((k, i) => {
@@ -453,7 +530,7 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                           <IzvorChip k={k} />
-                          {currentUser && k.izvor !== "Nadogradnje" && (
+                          {urediv(k) && (
                             <>
                               <button type="button" className="text-[11.5px] text-slate-500 hover:text-teal-700 inline-flex items-center gap-1" onClick={() => onPredlozi(f, { tip: "Ispravka podataka", refIdx: i })}><Pencil size={11} /> ispravi</button>
                               <button type="button" className="text-[11.5px] text-slate-500 hover:text-red-600 inline-flex items-center gap-1" onClick={() => onPredlozi(f, { tip: "Osoba više ne radi", refIdx: i })}><UserX size={11} /> više ne radi</button>
@@ -474,7 +551,7 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
 
           {naCekanju.length > 0 && (
             <div>
-              <PanelLabel>Čeka potvrdu prodavača · {naCekanju.length}</PanelLabel>
+              <PanelLabel>Stari prijedlozi — čekaju potvrdu prodavača · {naCekanju.length}</PanelLabel>
               <div className="space-y-2">{naCekanju.map((pr) => <PrijedlogKartica key={pr.id} pr={pr} canResolve={false} onResolve={async () => {}} />)}</div>
             </div>
           )}
@@ -498,11 +575,11 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
           )}
 
           {currentUser && (
-            <button type="button" className={btnSecondary + " w-full justify-center text-[13px]"} onClick={() => onPredlozi(f, { tip: "Nova osoba" })}>
-              <UserPlus size={15} /> Novi ili pogrešan kontakt? Javi prodavaču
+            <button type="button" className={btnPrimary + " w-full justify-center text-[13px]"} onClick={() => onPredlozi(f, { tip: "Nova osoba" })}>
+              <UserPlus size={15} /> Dodaj kontakt
             </button>
           )}
-          <p className="text-[11.5px] text-slate-400 -mt-3">Kontakte uređuje prodavač u Bazi potencijala; ovdje se samo predlaže izmjena.</p>
+          <p className="text-[11.5px] text-slate-400 -mt-3">Izmjena se odmah upisuje, a prodavač firme se ne mijenja{f.prodavac ? `; ako je radi neko drugi, ${f.prodavac} dobija obavijest` : ""}.</p>
         </div>
       </div>
     </div>
@@ -514,8 +591,8 @@ function FirmaPanel({ f, podrska, prijedlozi, currentUser, onClose, onPredlozi, 
 /* ---------------------------------------------------------------------- */
 
 export function KontaktiTab({
-  kupci = [], potencijali = [], podrska = [], nadFirme = [], prijedlozi = [], currentUser,
-  onPredlozi, onPovuci, onViewCompany, odjave = [], onOpenMailing,
+  kupci = [], potencijali = [], podrska = [], nadFirme = [], kupciKontakti = [], prijedlozi = [], currentUser,
+  onSaveKontakt, onPovuci, onViewCompany, odjave = [], onOpenMailing,
 }) {
   const odjavljeni = useMemo(() => new Set((odjave || []).map((o) => String(o.email || "").toLowerCase())), [odjave]);
   const mojaDrzava = Object.entries(TEHNICAR_PO_DRZAVI).find(([, t]) => t === currentUser);
@@ -530,7 +607,7 @@ export function KontaktiTab({
   const [showMoji, setShowMoji] = useState(false);
   useEffect(() => { setPage(1); }, [fDrz, fObuhvat, fFali, q]);
 
-  const firme = useMemo(() => izgradiKontakte({ kupci, potencijali, nadFirme }), [kupci, potencijali, nadFirme]);
+  const firme = useMemo(() => izgradiKontakte({ kupci, potencijali, nadFirme, kupciKontakti }), [kupci, potencijali, nadFirme, kupciKontakti]);
   const uDrzavi = useMemo(() => [...firme.values()].filter((f) => fDrz === "Sve" || f.grupa === fDrz), [firme, fDrz]);
   const nDrz = useMemo(() => {
     const m = { Sve: 0 };
@@ -595,13 +672,12 @@ export function KontaktiTab({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Kontakti</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Ko je kontakt osoba kod kupca — telefon i mail na jednom mjestu. Podaci dolaze iz Baze potencijala i Nadogradnji.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Ko je kontakt osoba kod kupca — telefon i mail na jednom mjestu. Kontakt dodaje i mijenja i prodaja i podrška; prodavač dobija obavijest.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1.5"><Lock size={13} /> Samo pregled</span>
           {currentUser && (
             <button type="button" className={headerBtnSec} onClick={() => setShowMoji(true)}>
-              <Inbox size={15} /> Moji prijedlozi{mojiNaCekanju ? <span className="text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 px-1.5 rounded-full">{mojiNaCekanju}</span> : null}
+              <Inbox size={15} /> Moje izmjene{mojiNaCekanju ? <span className="text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 px-1.5 rounded-full">{mojiNaCekanju}</span> : null}
             </button>
           )}
           <button type="button" className={headerBtnSec} onClick={izvoz} disabled={!redovi.length}><Download size={15} /> Izvoz</button>
@@ -675,7 +751,7 @@ export function KontaktiTab({
                       </div>
                       <div>{k ? <IzvorChip k={k} /> : currentUser ? (
                         <button type="button" onClick={(e) => { e.stopPropagation(); setModal({ f, pocetni: { tip: "Nova osoba" } }); }}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 dark:text-teal-300 border border-dashed border-teal-300 dark:border-teal-700 px-2 py-0.5 rounded-full whitespace-nowrap hover:bg-teal-50"><UserPlus size={11} /> predloži</button>
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 dark:text-teal-300 border border-dashed border-teal-300 dark:border-teal-700 px-2 py-0.5 rounded-full whitespace-nowrap hover:bg-teal-50"><UserPlus size={11} /> dodaj</button>
                       ) : null}</div>
                       <div className="hidden md:block">{f.prodavac ? <Avatar name={f.prodavac} size="sm" /> : <span title="Nema prodavača" className="inline-block w-6 h-6 rounded-full border border-dashed border-slate-300 dark:border-slate-600" />}</div>
                     </div>
@@ -693,7 +769,7 @@ export function KontaktiTab({
         )}
       </div>
 
-      {modal && <PrijedlogModal f={modal.f} pocetni={modal.pocetni} currentUser={currentUser} onClose={() => setModal(null)} onSave={onPredlozi} />}
+      {modal && <KontaktModal f={modal.f} pocetni={modal.pocetni} currentUser={currentUser} onClose={() => setModal(null)} onSave={onSaveKontakt} />}
       {showMoji && <MojiPrijedloziModal lista={moji} onClose={() => setShowMoji(false)} onPovuci={onPovuci} onViewCompany={onViewCompany} />}
     </div>
   );
