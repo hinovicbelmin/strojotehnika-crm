@@ -2946,16 +2946,16 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
 
       {/* ---------- prijedlozi kontakata od tehničke podrške ---------- */}
       {(() => {
-        const pp = kontaktPrijedlozi.filter((x) => x.status === "Na čekanju" &&
+        const pp = kontaktPrijedlozi.filter((x) => (x.status === "Na čekanju" || x.status === "Obavijest") &&
           (mod === "moji" ? x.prodavac === currentUser || !x.prodavac : fKolega === "Svi" || (x.prodavac || "Nedodijeljeno") === fKolega))
           .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
         if (!pp.length) return null;
         const prik = sviPrijedlozi ? pp : pp.slice(0, 3);
         return (
-          <div className="mb-4 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-2xl p-4">
-            <div className="flex items-center justify-between gap-2 mb-2.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">Prijedlozi kontakata od tehničke podrške · {pp.length}</span>
-              <span className="text-[11.5px] text-slate-500 dark:text-slate-400">potvrdi ili odbaci — kontakt se mijenja u Bazi potencijala</span>
+          <div className="mb-4 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-2xl p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-800 dark:text-sky-300">Kontakti — izmjene od tehničke podrške · {pp.length}</span>
+              <span className="text-[11.5px] text-slate-500 dark:text-slate-400">kontakt je već upisan u Bazu potencijala — klikni „Vidio sam“</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2.5">
               {prik.map((pr) => <PrijedlogKartica key={pr.id} pr={pr} showFirma canResolve={!!currentUser && !!onResolvePrijedlog} onResolve={onResolvePrijedlog} onViewCompany={onViewCompany} />)}
