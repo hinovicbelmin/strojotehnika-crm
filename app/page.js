@@ -18,7 +18,7 @@ import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
 import { KalkulatorTab, CjenovnikTab, praznaKalkulacija } from "../components/kalkulator";
 import { AkcijeTab } from "../components/akcije";
-import { KontaktiTab, primijeniPrijedlog } from "../components/kontakti";
+import { KontaktiTab, primijeniPrijedlog, jeObavijest } from "../components/kontakti";
 import { MailingIzvozModal } from "../components/mailing";
 import { KalendarTab, vanUredaDanas, opisZaHistoriju } from "../components/kalendar";
 import { NadogradnjeTab, izgradiNadogradnje, nadogradnjeBadge, nadogradnjeSazetak, aktuelnaKampanja } from "../components/nadogradnje";
@@ -85,6 +85,7 @@ export default function HomePage() {
   const [mailingFilteri, setMailingFilteri] = useState([]);
   const [mailingIzvozi, setMailingIzvozi] = useState([]);
   const [kalendar, setKalendar] = useState([]);
+  const [kupciKontakti, setKupciKontakti] = useState([]);
   const [mailingModal, setMailingModal] = useState(null); // { akcija } — otvoren prozor "Izvoz za mailing"
 
   // Ime kolege je vezano za prijavljeni nalog (Supabase user_metadata.ime), ne za računar/browser
@@ -152,6 +153,7 @@ export default function HomePage() {
         setMailingFilteri(cached.mailingFilteri || []);
         setMailingIzvozi(cached.mailingIzvozi || []);
         setKalendar(cached.kalendar || []);
+        setKupciKontakti(cached.kupciKontakti || []);
         setLoadingData(false);
         setDataReady(true);
       } else {
@@ -175,6 +177,7 @@ export default function HomePage() {
       setMailingFilteri(all.mailingFilteri || []);
       setMailingIzvozi(all.mailingIzvozi || []);
       setKalendar(all.kalendar || []);
+      setKupciKontakti(all.kupciKontakti || []);
       setLoadingData(false);
       setDataReady(true);
     })();
@@ -183,8 +186,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar]);
+    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti });
+  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -850,28 +853,87 @@ export default function HomePage() {
   };
 
   /* ---------------- Kontakti: prijedlozi tehničke podrške ---------------- */
-  const addKontaktPrijedlog = async (payload) => {
-    const ts = new Date().toISOString();
-    try {
-      const rec = await insertRow("kontakti_prijedlozi", { ...payload, created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts });
-      setKontaktPrijedlozi((prev) => [rec, ...prev]);
-      showToast(payload.prodavac ? `Prijedlog poslan prodavaču (${payload.prodavac})` : "Prijedlog poslan prodaji");
-      return rec;
-    } catch (e) {
-      console.error(e);
-      showToast("Greška pri slanju prijedloga", "error");
-      throw e;
-    }
-  };
   const povuciKontaktPrijedlog = (pr) => {
     const item = kontaktPrijedlozi.find((x) => x.id === pr.id);
     if (!item) return;
     setKontaktPrijedlozi((prev) => prev.filter((x) => x.id !== pr.id));
     scheduleUndoDelete("prijedlog kontakta", () => setKontaktPrijedlozi((prev) => [item, ...prev]), () => deleteRow("kontakti_prijedlozi", pr.id));
   };
-  // prodavač prihvata (kontakt se upisuje u Bazu potencijala) ili odbacuje prijedlog
+  // Kontakti: tehnička podrška ili prodaja dodaje / ispravlja / uklanja kontakt — upisuje se odmah u Bazu potencijala;
+  // ako izmjenu napravi neko ko nije prodavač firme, prodavaču ide obavijest (kontakti_prijedlozi, status "Obavijest")
+  const saveKontakt = async (pr) => {
+    const ts = new Date().toISOString();
+    const ko = { updated_by: currentUser || "—", updated_at: ts };
+    try {
+      let poruka = { "Nova osoba": "Kontakt dodan", "Ispravka podataka": "Kontakt ispravljen", "Osoba više ne radi": "Kontakt uklonjen" }[pr.tip] || "Kontakt sačuvan";
+      const ref = pr.ref || {};
+      const kandidati = potencijali.filter((p) => companyKey(p.naziv_firme) === pr.firma_key);
+      const pot = (pr.potencijal_id && potencijali.find((p) => String(p.id) === String(pr.potencijal_id)))
+        || kandidati.find((p) => p.kolega && p.kolega !== "Nedodijeljeno") || kandidati[0];
+      if (pr.tip !== "Nova osoba" && ref.kkId) {
+        // kontakt firme koja nije u Bazi potencijala (tabela kontakti_kupaca)
+        if (pr.tip === "Osoba više ne radi") {
+          await deleteRow("kontakti_kupaca", ref.kkId);
+          setKupciKontakti((prev) => prev.filter((x) => x.id !== ref.kkId));
+        } else {
+          const nonEmpty = Object.fromEntries(["ime", "funkcija", "telefon", "email"].map((k) => [k, (pr[k] || "").trim()]).filter(([, v]) => v));
+          const rec = await updateRow("kontakti_kupaca", ref.kkId, { ...nonEmpty, ...ko });
+          setKupciKontakti((prev) => prev.map((x) => (x.id === ref.kkId ? rec : x)));
+        }
+      } else if (pot) {
+        // firma je u Bazi potencijala — mijenja se samo kontakt, prodavač ostaje isti
+        const { patch, napomena } = primijeniPrijedlog(pot, pr);
+        const rec = await updateRow("potencijali", pot.id, { ...patch, ...ko });
+        setPotencijali((prev) => prev.map((p) => (p.id === pot.id ? rec : p)));
+        if (napomena) poruka = napomena;
+      } else if (pr.tip === "Nova osoba") {
+        // firma je samo u Kupcima — kontakt se čuva uz kupca, bez upisa u Bazu potencijala
+        const rec = await insertRow("kontakti_kupaca", {
+          firma: pr.firma, firma_key: pr.firma_key, drzava: pr.drzava || null,
+          ime: pr.ime || "", funkcija: pr.funkcija || "", telefon: pr.telefon || "", email: pr.email || "", napomena: pr.napomena || null,
+          izvor: pr.izvor || null, dodao: currentUser || "—", created_by: currentUser || "—", created_at: ts, ...ko,
+        });
+        setKupciKontakti((prev) => [rec, ...prev]);
+      } else {
+        showToast("Kontakt nije nađen", "error");
+        return null;
+      }
+      // obavijest prodavaču (ako izmjenu nije napravio on sam); prodavač firme se nigdje ne mijenja
+      const prodavac = pr.prodavac || null;
+      if (prodavac !== currentUser) {
+        try {
+          const ob = await insertRow("kontakti_prijedlozi", {
+            ...pr, potencijal_id: pot ? String(pot.id) : null, prodavac, predlozio: currentUser, status: "Obavijest",
+            created_by: currentUser || "—", created_at: ts, ...ko,
+          });
+          setKontaktPrijedlozi((prev) => [ob, ...prev]);
+          poruka += prodavac ? ` · ${prodavac} je obaviješten` : " · prodaja je obaviještena";
+        } catch (e) {
+          console.error(e);
+          poruka += " · obavijest prodavaču nije poslana";
+        }
+      }
+      showToast(poruka);
+      return true;
+    } catch (e) {
+      console.error(e);
+      showToast("Greška pri čuvanju kontakta", "error");
+      throw e;
+    }
+  };
+  // prodavač prihvata (kontakt se upisuje u Bazu potencijala) ili odbacuje stari prijedlog; obavijest samo označava kao pročitanu
   const resolveKontaktPrijedlog = async (pr, prihvati) => {
     const ts = new Date().toISOString();
+    if (jeObavijest(pr)) {
+      try {
+        const recO = await updateRow("kontakti_prijedlozi", pr.id, { status: "Pročitano", rijesio: currentUser || "—", rijeseno_at: ts, updated_by: currentUser || "—", updated_at: ts });
+        setKontaktPrijedlozi((prev) => prev.map((x) => (x.id === pr.id ? recO : x)));
+      } catch (e) {
+        console.error(e);
+        showToast("Greška pri označavanju obavijesti", "error");
+      }
+      return;
+    }
     try {
       let poruka = prihvati ? "Kontakt ažuriran u Bazi potencijala" : "Prijedlog odbačen";
       if (prihvati) {
@@ -884,17 +946,15 @@ export default function HomePage() {
           setPotencijali((prev) => prev.map((p) => (p.id === pot.id ? rec : p)));
           if (napomena) poruka = napomena;
         } else if (pr.tip !== "Osoba više ne radi") {
-          // firma postoji samo u Kupcima — otvara se zapis u Bazi potencijala s ovim kontaktom
-          const d = String(pr.drzava || "");
-          const drzava = /bosn|herceg/i.test(d) ? "Bosna i Hercegovina" : /croat|hrvat/i.test(d) ? "Hrvatska" : /alban/i.test(d) ? "Albanija" : d;
-          const rec = await insertRow("potencijali", {
-            naziv_firme: pr.firma, drzava: drzava || null, kolega: currentUser || "Nedodijeljeno", prodavaci: currentUser ? [currentUser] : [],
-            status: "Dobijen", kontakt_osoba: pr.ime || "", kontakt_funkcija: pr.funkcija || "", telefon: pr.telefon || "", email: pr.email || "",
-            dodatni_kontakti: [], historija: [], napomena: `Kupac (Kupci i licence) — zapis otvoren iz prijedloga kontakta (${pr.predlozio || "tehnička podrška"})`,
+          // firma postoji samo u Kupcima — kontakt se čuva uz kupca (bez upisa u Bazu potencijala)
+          const rec = await insertRow("kontakti_kupaca", {
+            firma: pr.firma, firma_key: pr.firma_key, drzava: pr.drzava || null,
+            ime: pr.ime || "", funkcija: pr.funkcija || "", telefon: pr.telefon || "", email: pr.email || "", napomena: pr.napomena || null,
+            izvor: pr.izvor || null, dodao: pr.predlozio || currentUser || "—",
             created_by: currentUser || "—", created_at: ts, updated_by: currentUser || "—", updated_at: ts,
           });
-          setPotencijali((prev) => [rec, ...prev]);
-          poruka = "Firma dodana u Bazu potencijala s ovim kontaktom";
+          setKupciKontakti((prev) => [rec, ...prev]);
+          poruka = "Kontakt sačuvan uz kupca";
         }
       }
       const recP = await updateRow("kontakti_prijedlozi", pr.id, {
@@ -1099,7 +1159,7 @@ export default function HomePage() {
     podsjetnici: {
       count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length
         + akcijeFirme.filter((r) => r.podsjetnik_datum && daysDiff(String(r.podsjetnik_datum).slice(0, 10)) <= 0).length
-        + (isTehnicar ? 0 : kontaktPrijedlozi.filter((p) => p.status === "Na čekanju" && p.prodavac === currentUser).length),
+        + (isTehnicar ? 0 : kontaktPrijedlozi.filter((p) => (p.status === "Na čekanju" || p.status === "Obavijest") && p.prodavac === currentUser).length),
       tone: "alert", hint: "za danas / kasni",
     },
     kupci: {
@@ -1320,8 +1380,9 @@ export default function HomePage() {
                   podrska={podrska}
                   nadFirme={nadModel.firme}
                   prijedlozi={kontaktPrijedlozi}
+                  kupciKontakti={kupciKontakti}
                   currentUser={currentUser}
-                  onPredlozi={addKontaktPrijedlog}
+                  onSaveKontakt={saveKontakt}
                   onPovuci={povuciKontaktPrijedlog}
                   odjave={mailingOdjave}
                   onOpenMailing={isTehnicar ? null : () => setMailingModal({ akcija: null })}
@@ -1431,6 +1492,8 @@ export default function HomePage() {
           forecast={forecast}
           nadogradnjeInfo={nadSazetak}
           kalendar={kalendar}
+          kupciKontakti={kupciKontakti}
+          tehnicar={isTehnicar}
           onClose={() => setViewingCompany(null)}
         />
       )}
@@ -1445,6 +1508,7 @@ export default function HomePage() {
           odjave={mailingOdjave}
           filteri={mailingFilteri}
           izvozi={mailingIzvozi}
+          kupciKontakti={kupciKontakti}
           presetAkcija={mailingModal.akcija}
           currentUser={currentUser}
           onClose={() => setMailingModal(null)}
