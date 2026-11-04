@@ -10,7 +10,7 @@ import {
 import { fmtN, Avatar } from "./crmBits";
 import { drzavaGrupa } from "./nadogradnje";
 import {
-  DRZAVE, ODRZAVANJE, TIPOVI, ZADNJI, PORODICE_LIC, licenceInfo, odrzavanjeOk, zadnjiOk, kupciPoFirmi, akcijaAktivna,
+  DRZAVE, ODRZAVANJE, TIPOVI, ZADNJI, PORODICE_LIC, VRSTE_KUPCA, vrstaKupcaOk, licenceInfo, odrzavanjeOk, zadnjiOk, kupciPoFirmi, akcijaAktivna,
 } from "./akcije";
 
 /* ---------------------------------------------------------------------- */
@@ -22,7 +22,7 @@ const IZVORI = ["Baza potencijala", "Kupci", "Oboje"];
 const NEDODIJELJENO = "Nedodijeljeno";
 const DRZAVA_KRATKO = { BA: "BiH", HR: "Hrvatska", AL: "Albanija" };
 export const POCETNI_FILTER = {
-  izvor: "Oboje", drzava: "Sve", prodavac: "Svi", porodica: "Svi", tip: "Sve", odrzavanje: "Sve", status: "Svi", zadnji: "Bilo kada", akcija: "",
+  izvor: "Oboje", drzava: "Sve", prodavac: "Svi", vrsta: "Komercijalni", porodica: "Svi", tip: "Sve", odrzavanje: "Sve", status: "Svi", zadnji: "Bilo kada", akcija: "",
   kupiliDana: 30, xKupili: true, xForecast: true, xAkcija: false, xNezainteresovana: true, xIzgubljen: true, osobe: "svi",
 };
 const RAZLOZI = [
@@ -56,6 +56,7 @@ export function opisFiltera(f, akcije = []) {
   if (f.izvor !== "Oboje") d.push(f.izvor);
   if (f.drzava !== "Sve") d.push((DRZAVE.find((x) => x[0] === f.drzava) || [0, f.drzava])[1]);
   if (f.prodavac !== "Svi") d.push(f.prodavac);
+  if (f.vrsta && f.vrsta !== "Komercijalni") d.push(f.vrsta === "Sve" ? "svi kupci (i EDU / Research)" : `${f.vrsta} kupci`);
   if (f.porodica !== "Svi") d.push(f.porodica);
   if (f.tip !== "Sve") d.push((TIPOVI.find((x) => x[0] === f.tip) || [0, f.tip])[1]);
   if (f.odrzavanje !== "Sve") d.push(`održavanje: ${f.odrzavanje.toLowerCase()}`);
@@ -136,7 +137,8 @@ export function izgradiMailing({ kupci, potencijali, forecast, akcije, akcijeFir
     if (f.status !== "Svi" && !pots.some((p) => p.status === f.status)) continue;
     const zk = pots.map((p) => p.zadnji_kontakt).filter(Boolean).sort().slice(-1)[0] || null;
     if (!zadnjiOk({ zadnji_kontakt: zk }, f.zadnji)) continue;
-    const li = licenceInfo(kRows, f.porodica === "Svi" ? "Sve" : f.porodica, f.tip);
+    if (!vrstaKupcaOk(kRows, f.vrsta)) continue;
+    const li = licenceInfo(kRows, f.porodica === "Svi" ? "Sve" : f.porodica, f.tip, f.vrsta || "Sve");
     if (licFilter && (!li.ima || !odrzavanjeOk(li, f.odrzavanje))) continue;
     firmiOsnova += 1;
 
@@ -391,7 +393,8 @@ export function MailingIzvozModal({
               <div className="grid grid-cols-2 gap-2">
                 <Sel label="Država" value={f.drzava} onChange={set("drzava")} options={DRZAVE} def="Sve" />
                 <Sel label="Prodavač" value={f.prodavac} onChange={set("prodavac")} options={["Svi", ...PRODAJA_MARKETING_NAMES, "(nedodijeljeno)"]} def="Svi" />
-                <Sel label="Proizvod" value={f.porodica} onChange={set("porodica")} options={["Svi", ...PORODICE_LIC]} def="Svi" />
+                <Sel label="Vrsta kupca" value={f.vrsta} onChange={set("vrsta")} options={VRSTE_KUPCA} def="Komercijalni" />
+                <Sel label="Proizvod" value={f.porodica} onChange={set("porodica")} options={["Svi", ...PORODICE_LIC.map((p) => (p.startsWith("SOLIDWORKS · ") ? [p, "\u00a0\u00a0↳ " + p.slice(13)] : p))]} def="Svi" />
                 <Sel label="Tip licence" value={f.tip} onChange={set("tip")} options={TIPOVI} def="Sve" />
                 <Sel label="Održavanje" value={f.odrzavanje} onChange={set("odrzavanje")} options={["Sve", ...ODRZAVANJE.filter((x) => x !== "Sve")]} def="Sve" />
                 <Sel label="Status potencijala" value={f.status} onChange={set("status")} options={["Svi", ...POTENCIJAL_STATUSI]} def="Svi" />
