@@ -28,6 +28,7 @@ export function ForecastStatusBadge({ status }) {
   );
 }
 
+// wide: false = uski, true = srednji, "xl" = široki (npr. 360° pregled firme)
 export function Modal({ title, onClose, children, wide }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -37,7 +38,7 @@ export function Modal({ title, onClose, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/70 p-4 backdrop-blur-[2px]" onClick={onClose}>
       <div
-        className={(wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-h-[85vh] flex flex-col border border-transparent dark:border-slate-700"}
+        className={(wide === "xl" ? "max-w-5xl" : wide ? "max-w-2xl" : "max-w-lg") + " w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-h-[85vh] flex flex-col border border-transparent dark:border-slate-700"}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
