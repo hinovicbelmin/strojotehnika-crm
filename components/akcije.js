@@ -10,6 +10,7 @@ import {
   inputCls, btnPrimary, btnSecondary, btnGhostIcon, fmtDate, daysDiff, companyKey, PRODAJA_MARKETING_NAMES,
   POTENCIJAL_STATUSI, currentMonthStr, isForecastWon, isForecastLost, FORECAST_SOFTVERI, FORECAST_TIPOVI_LICENCE,
   FORECAST_STATUSI, FORECAST_PRODAVACI, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca,
+  PORODICE_LICENCI, porodicaLicence, SW_DODACI, swDodatak, vrstaLicence,
 } from "../lib/crm";
 import { EmptyState, SearchBox } from "./ui";
 import { Avatar, FilterPill, PanelLabel, PageNav, headerBtnSec, fmtN, daysAgo, MenuButton } from "./crmBits";
@@ -44,16 +45,25 @@ export const TIPOVI = [["Sve", "Svi tipovi"], ["ALC", "Trajna (ALC)"], ["YLC", "
 const TIP_GRUPA = { ALC: ["ALC", "ELC", "ULC"], YLC: ["YLC", "QLC"], YSC: ["YSC", "ASC", "QSC"] };
 export const ZADNJI = ["Bilo kada", "Zadnjih 90 dana", "Prije više od 6 mj.", "Prije više od 12 mj.", "Nikad kontaktirano"];
 
-// porodice proizvoda — isto kao u Kupcima i licencama
-export const PORODICE_LIC = ["SOLIDWORKS", "3DEXPERIENCE", "DraftSight", "SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "Ostalo"];
-const ULOGE_3DX = /(Swymer|Collaborative|Collaborator|Business Analyst|Project Planner|Works Learner|Shop Floor|3D Creator|3D Sculptor|Manufacturing Definition|Industrial Designer|Release Engineer|Engineer$|Structural Designer|Product Architect|Innovator)/i;
-function porodicaLicence(k) {
-  const p = (k.naziv_proizvoda || "").trim();
-  if (!p) return "Ostalo";
-  if (/^NOT FOR SALE/i.test(p) || /3DEXPERIENCE|^Platform\b/i.test(p) || ULOGE_3DX.test(p)) return "3DEXPERIENCE";
-  for (const f of ["SolidCAM", "SWOOD", "DriveWorks", "SolidSteel", "DraftSight"]) if (p.toLowerCase().includes(f.toLowerCase())) return f;
-  if (/SOLIDWORKS|^PhotoWorks/i.test(p)) return "SOLIDWORKS";
-  return "Ostalo";
+// izbor "Proizvod" — porodice kao u Kupcima i licencama + dodatni SOLIDWORKS proizvodi ("SOLIDWORKS · PDM")
+const SW_TAG = "SOLIDWORKS · ";
+export const PORODICE_LIC = PORODICE_LICENCI.flatMap((f) => (f === "SOLIDWORKS" ? [f, ...SW_DODACI.map((t) => SW_TAG + t)] : [f]));
+function proizvodOk(k, f) {
+  if (f.startsWith(SW_TAG)) {
+    const t = f.slice(SW_TAG.length), d = swDodatak(k);
+    return d === t || (t === "PDM" && d === "Manage");
+  }
+  return porodicaLicence(k) === f;
+}
+// vrsta kupca: Komercijalni (default), EDU, Research ili Svi
+export const VRSTE_KUPCA = [["Komercijalni", "Komercijalni"], ["EDU", "EDU"], ["Research", "Research"], ["Sve", "Svi"]];
+const VRSTA_LIC = { Komercijalni: "Komercijalna", EDU: "EDU", Research: "Research" };
+// firma prolazi ako ima bar jednu glavnu licencu te vrste; firme bez licenci prolaze samo kao "Komercijalni"
+export function vrstaKupcaOk(rows, vrsta) {
+  if (!vrsta || vrsta === "Sve") return true;
+  const glavne = (rows || []).filter((k) => jeGlavnaLicenca(k));
+  if (!glavne.length) return vrsta === "Komercijalni";
+  return glavne.some((k) => vrstaLicence(k) === VRSTA_LIC[vrsta]);
 }
 const licKom = (k) => { const n = Number(k.broj_licenci); return n > 0 ? n : 1; };
 // dodatak uz paket ("with SOLIDWORKS CAM ...") nije zasebna licenca — ne broji se, ali se gleda njegov datum održavanja
@@ -131,24 +141,32 @@ export function kupciPoFirmi(kupci) {
   }
   return m;
 }
-export function licenceInfo(rows, porodica = "Sve", tip = "Sve") {
+export function licenceInfo(rows, porodica = "Sve", tip = "Sve", vrsta = "Sve") {
   let rel = rows || [];
+  if (vrsta && vrsta !== "Sve") rel = rel.filter((k) => vrstaLicence(k) === VRSTA_LIC[vrsta]);
   if (tip !== "Sve") rel = rel.filter((k) => (TIP_GRUPA[tip] || []).includes(String(k.revenue_type || "").toUpperCase()));
-  if (porodica !== "Sve") rel = rel.filter((k) => porodicaLicence(k) === porodica);
-  const m = new Map();
+  if (porodica !== "Sve") rel = rel.filter((k) => proizvodOk(k, porodica));
+  const m = new Map(), dod = new Map();
   let n = 0;
   let maxEnd = null;
   let aktivno = false;
   for (const k of rel) {
     const f = porodicaLicence(k);
     const kom = jeKomponenta(k) ? 0 : licKom(k);
-    m.set(f, (m.get(f) || 0) + kom);
+    const d = swDodatak(k);
+    if (d) dod.set(d, (dod.get(d) || 0) + kom);
+    else m.set(f, (m.get(f) || 0) + kom);
     n += kom;
     const e = k.end_date ? String(k.end_date).slice(0, 10) : null;
     if (e && (!maxEnd || e > maxEnd)) maxEnd = e;
     if (e ? daysDiff(e) >= 0 : /w\/support/i.test(k.izvorni_status || "") && !/wo\/support/i.test(k.izvorni_status || "")) aktivno = true;
   }
-  const tekst = PORODICE_LIC.filter((f) => m.get(f) > 0).map((f) => `${f} ${m.get(f)}`).join(" · ");
+  // SOLIDWORKS = samo glavni CAD; dodatni proizvodi (PDM, Simulation…) navedeni posebno
+  const red = (t) => { const i = SW_DODACI.indexOf(t); return i < 0 ? 99 : i; };
+  const tekst = [
+    ...PORODICE_LICENCI.filter((f) => m.get(f) > 0).map((f) => `${f} ${m.get(f)}`),
+    ...[...dod.entries()].filter(([, x]) => x > 0).sort((a, b) => red(a[0]) - red(b[0]) || a[0].localeCompare(b[0])).map(([t, x]) => `${t} ${x}`),
+  ].join(" · ");
   return { tekst, n, maxEnd, aktivno, ima: rel.length > 0 };
 }
 export function odrzavanjeOk(li, opcija) {
@@ -283,6 +301,7 @@ function FirmePicker({ kupci, potencijali, postojeci, onChange }) {
   const [fPor, setFPor] = useState("SOLIDWORKS");
   const [fOdr, setFOdr] = useState("Isteklo");
   const [fTip, setFTip] = useState("ALC");
+  const [fVrsta, setFVrsta] = useState("Komercijalni");
   const [pProd, setPProd] = useState("Svi");
   const [pStatus, setPStatus] = useState("Svi");
   const [pZadnji, setPZadnji] = useState("Bilo kada");
@@ -319,7 +338,7 @@ function FirmePicker({ kupci, potencijali, postojeci, onChange }) {
     if (izvor === "kupci") {
       for (const [key, rows] of kupciMap) {
         if (fDrz !== "Sve" && drzavaGrupa(rows[0].drzava) !== fDrz) continue;
-        const li = licenceInfo(rows, fPor, fTip);
+        const li = licenceInfo(rows, fPor, fTip, fVrsta);
         if (!li.ima || !odrzavanjeOk(li, fOdr)) continue;
         out.push(kandidat(key, String(rows[0].naziv_firme || "").trim(), rows[0].drzava, { li }));
       }
@@ -340,17 +359,17 @@ function FirmePicker({ kupci, potencijali, postojeci, onChange }) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [izvor, kupciMap, potMap, fDrz, fPor, fOdr, fTip, pProd, pStatus, pZadnji, excel, rucno]);
+  }, [izvor, kupciMap, potMap, fDrz, fPor, fOdr, fTip, fVrsta, pProd, pStatus, pZadnji, excel, rucno]);
 
   const vecUAkciji = kandidati.filter((k) => postojeci.has(k.key)).length;
   const nove = useMemo(() => kandidati.filter((k) => !postojeci.has(k.key)), [kandidati, postojeci]);
   const odabrane = useMemo(() => nove.filter((k) => !iskljucene.has(k.key)).map((k) => ({ ...k, prodavac: dodjela[k.key] !== undefined ? dodjela[k.key] : k.prodavac })),
     [nove, iskljucene, dodjela]);
   const opisFiltera = useMemo(() => {
-    if (izvor === "kupci") return { izvor, drzava: fDrz, porodica: fPor, odrzavanje: fOdr, tip: fTip };
+    if (izvor === "kupci") return { izvor, drzava: fDrz, porodica: fPor, odrzavanje: fOdr, tip: fTip, vrsta: fVrsta };
     if (izvor === "potencijali") return { izvor, drzava: fDrz, prodavac: pProd, status: pStatus, zadnji_kontakt: pZadnji };
     return { izvor };
-  }, [izvor, fDrz, fPor, fOdr, fTip, pProd, pStatus, pZadnji]);
+  }, [izvor, fDrz, fPor, fOdr, fTip, fVrsta, pProd, pStatus, pZadnji]);
   useEffect(() => { onChange(odabrane, opisFiltera); }, [odabrane, opisFiltera, onChange]);
 
   const qq = q.trim().toLowerCase();
@@ -413,14 +432,17 @@ function FirmePicker({ kupci, potencijali, postojeci, onChange }) {
       </div>
 
       {(izvor === "kupci" || izvor === "potencijali") && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className={"grid grid-cols-2 gap-2.5 " + (izvor === "kupci" ? "sm:grid-cols-5" : "sm:grid-cols-4")}>
           <label><Lbl>Država</Lbl>
             <select className={sel} value={fDrz} onChange={(e) => setFDrz(e.target.value)}>{DRZAVE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           </label>
           {izvor === "kupci" ? (
             <>
+              <label><Lbl>Vrsta kupca</Lbl>
+                <select className={sel} value={fVrsta} onChange={(e) => setFVrsta(e.target.value)}>{VRSTE_KUPCA.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              </label>
               <label><Lbl>Proizvod</Lbl>
-                <select className={sel} value={fPor} onChange={(e) => setFPor(e.target.value)}>{["Sve", ...PORODICE_LIC].map((p) => <option key={p} value={p}>{p === "Sve" ? "Svi proizvodi" : p}</option>)}</select>
+                <select className={sel} value={fPor} onChange={(e) => setFPor(e.target.value)}>{["Sve", ...PORODICE_LIC].map((p) => <option key={p} value={p}>{p === "Sve" ? "Svi proizvodi" : p.startsWith(SW_TAG) ? "\u00a0\u00a0↳ " + p.slice(SW_TAG.length) : p}</option>)}</select>
               </label>
               <label><Lbl>Tip licence</Lbl>
                 <select className={sel} value={fTip} onChange={(e) => setFTip(e.target.value)}>{TIPOVI.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
