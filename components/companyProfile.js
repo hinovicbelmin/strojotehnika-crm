@@ -1,9 +1,26 @@
 "use client";
 import { useState } from "react";
-import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle } from "lucide-react";
+import { Building2, Phone, Mail, User, MapPin, Briefcase, Wrench, LineChart, Calendar, Printer, History, Users, ArrowUpCircle, Copy, Check } from "lucide-react";
 import { fmtDate, fmtMonth, licenseStatus, STATUS_BOJE, todayStr, companyKey, buildCompanyNameIndex, findCompanyMatch, jeGlavnaLicenca } from "../lib/crm";
 import { Modal, ForecastStatusBadge } from "./ui";
 import { KalendarFirmeSekcija } from "./kalendar";
+import { IzvorOznaka, izvorOdOsobe } from "./kontakti";
+
+// serijski broj licence + dugme za kopiranje
+function SerijskiBroj({ sn }) {
+  const [ok, setOk] = useState(false);
+  if (!sn) return null;
+  const kopiraj = () => { try { navigator.clipboard.writeText(String(sn)); setOk(true); setTimeout(() => setOk(false), 1200); } catch (e) { /* */ } };
+  return (
+    <span className="inline-flex items-center gap-1">
+      SN <span className="font-mono text-slate-600 dark:text-slate-300 select-all">{sn}</span>
+      <button type="button" onClick={kopiraj} title="Kopiraj serijski broj" aria-label={`Kopiraj serijski broj ${sn}`}
+        className="no-print inline-flex items-center justify-center w-5 h-5 rounded text-slate-400 hover:text-teal-600 hover:bg-slate-200/60 dark:hover:bg-slate-700">
+        {ok ? <Check size={11} className="text-green-600" /> : <Copy size={11} />}
+      </button>
+    </span>
+  );
+}
 
 // Poređenje naziva firmi preko ključa ("M2R shpk" = "M2R SH PK", "Bezmana" = "BEZMANA DOO")
 function norm(s) {
@@ -24,7 +41,8 @@ function licenseDisplayName(k) {
   return k.naziv_proizvoda || "—";
 }
 
-export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, nadogradnjeInfo, kalendar = [], onClose }) {
+// tehnicar: tehnička podrška ne vidi historiju kontaktiranja ni Forecast stavke
+export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecast, nadogradnjeInfo, kalendar = [], kupciKontakti = [], tehnicar = false, onClose }) {
   const target = norm(name);
   const [sveHistorija, setSveHistorija] = useState(false);
   let potencijal = potencijali.find((p) => norm(p.naziv_firme) === target);
@@ -38,6 +56,8 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
     .filter((k) => norm(k.naziv_firme) === target)
     .map((k) => ({ ...k, __displayName: licenseDisplayName(k) }))
     .filter((k) => k.__displayName !== null);
+  // kontakti upisani u tabu Kontakti za firme koje nisu u Bazi potencijala
+  const kkLista = (kupciKontakti || []).filter((kk) => (kk.firma_key || norm(kk.firma)) === target);
   const istorija = podrska.filter((s) => norm(s.firma) === target).sort((a, b) => new Date(b.datum) - new Date(a.datum));
   let nad = nadogradnjeInfo ? nadogradnjeInfo.get(target) : null;
   if (!nad && nadogradnjeInfo) {
@@ -47,7 +67,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
   const forecastStavke = (forecast || []).filter((f) => norm(f.kupac) === target).sort((a, b) => (a.mjesec < b.mjesec ? 1 : -1));
 
   return (
-    <Modal title={name} onClose={onClose} wide>
+    <Modal title={name} onClose={onClose} wide="xl">
       <div className="no-print flex justify-end mb-3 -mt-2">
         <button
           onClick={() => window.print()}
@@ -101,7 +121,20 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-400 dark:text-slate-500">Nema zapisa u Bazi potencijala za ovu firmu.</p>
+          !kkLista.length && <p className="text-sm text-slate-400 dark:text-slate-500">Nema zapisa u Bazi potencijala za ovu firmu.</p>
+        )}
+        {kkLista.length > 0 && (
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-3 text-sm space-y-1.5 mt-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Kontakti kupca (dodani u tabu Kontakti)</div>
+            {kkLista.map((kk) => (
+              <div key={kk.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 dark:text-slate-400">
+                <span className="font-medium text-slate-800 dark:text-slate-200">{kk.ime || "(bez imena)"}{kk.funkcija ? ` (${kk.funkcija})` : ""}</span>
+                {kk.telefon && <span className="flex items-center gap-1"><Phone size={12} /> {kk.telefon}</span>}
+                {kk.email && <span className="flex items-center gap-1"><Mail size={12} /> {kk.email}</span>}
+                <IzvorOznaka izvor={kk.izvor === "Podrška" || kk.izvor === "Prodaja" ? kk.izvor : izvorOdOsobe(kk.dodao)} ko={kk.dodao} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -109,7 +142,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
       <KalendarFirmeSekcija unosi={kalendar} naziv={potencijal ? potencijal.naziv_firme : name} />
 
       {/* Historija kontaktiranja (Baza potencijala) */}
-      {kontaktHistorija.length > 0 && (
+      {!tehnicar && kontaktHistorija.length > 0 && (
         <div className="mb-6">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
             <History size={13} /> Historija kontaktiranja ({kontaktHistorija.length})
@@ -148,7 +181,11 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
                   <div className="min-w-0">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{k.__displayName}</span>
                     <span className="text-slate-400 dark:text-slate-500 text-xs ml-2">{k.broj_licenci ? `${k.broj_licenci} lic.` : ""}</span>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(k.start_date)} / {fmtDate(k.end_date)}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <SerijskiBroj sn={k.serijski_broj} />
+                      {k.serijski_broj && <span aria-hidden="true">·</span>}
+                      <span>{fmtDate(k.start_date)} / {fmtDate(k.end_date)}</span>
+                    </div>
                   </div>
                   <span className={"text-xs px-2 py-0.5 rounded-full shrink-0 " + s.cls}>{s.label}</span>
                 </div>
@@ -203,7 +240,8 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
         )}
       </div>
 
-      {/* Forecast stavke */}
+      {/* Forecast stavke (samo prodaja i marketing) */}
+      {!tehnicar && (
       <div>
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
           <LineChart size={13} /> Forecast stavke ({forecastStavke.length})
@@ -224,6 +262,7 @@ export function CompanyProfileModal({ name, potencijali, kupci, podrska, forecas
           </div>
         )}
       </div>
+      )}
       </div>
     </Modal>
   );
