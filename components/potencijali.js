@@ -15,7 +15,7 @@ import {
   Avatar, AvatarStack, StatusPill, FilterPill, ViewChip, MenuButton, SortHead, PageNav, PanelLabel,
   initials, daysAgo, relDate, ageCls, fmtN, headerBtnSec,
 } from "./crmBits";
-import { PrijedlogKartica } from "./kontakti";
+import { PrijedlogKartica, IzvorOznaka, izvorGlavnog, izvorDodatnog } from "./kontakti";
 import { OdjavaOznaka, prviMail } from "./mailing";
 
 export const NEDODIJELJENO = "Nedodijeljeno";
@@ -528,9 +528,9 @@ function zadnjiOk(p, opcija) {
 function kontaktiOf(p) {
   const out = [];
   if (p.kontakt_osoba || p.telefon || p.email) {
-    out.push({ ime: p.kontakt_osoba, funkcija: p.kontakt_funkcija, telefon: p.telefon, email: p.email, glavni: true });
+    out.push({ ime: p.kontakt_osoba, funkcija: p.kontakt_funkcija, telefon: p.telefon, email: p.email, glavni: true, izvor: izvorGlavnog(p) });
   }
-  for (const k of p.dodatni_kontakti || []) out.push({ ...k, glavni: false });
+  for (const k of p.dodatni_kontakti || []) out.push({ ...k, glavni: false, izvor: izvorDodatnog(k) });
   return out;
 }
 const firstOf = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)[0] || "";
@@ -650,7 +650,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
         <PanelLabel>Kontakti · {kontakti.length}</PanelLabel>
         {prijedlozi.length > 0 && (
           <div className="space-y-2 mb-3">
-            <div className="text-[11.5px] font-semibold text-amber-800 dark:text-amber-300">Prijedlog od tehničke podrške — potvrdi ili odbaci</div>
+            <div className="text-[11.5px] font-semibold text-sky-800 dark:text-sky-300">Izmjene kontakata od tehničke podrške</div>
             {prijedlozi.map((pr) => <PrijedlogKartica key={pr.id} pr={pr} canResolve={!!currentUser && !!onResolvePrijedlog} onResolve={onResolvePrijedlog} />)}
           </div>
         )}
@@ -670,6 +670,7 @@ function FirmaPanel({ p, currentUser, onClose, onEdit, onUpdate, onDelete, onVie
                     <div className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                       <span className="truncate">{k.ime || "(bez imena)"}</span>
                       {k.glavni && kontakti.length > 1 && <span className="text-[10px] font-bold text-teal-700 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 rounded-full shrink-0">glavni</span>}
+                      <IzvorOznaka izvor={k.izvor} ko={k.dodao} />
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ")}>
                       {[k.funkcija, k.telefon, k.email].filter(Boolean).join(" · ") || "—"}
@@ -1093,7 +1094,7 @@ export function PotencijaliTab({ data, kupci = [], currentUser, onAdd, onUpdate,
               <FirmaPanel key={openP.id} p={openP} currentUser={currentUser} onClose={() => setOpenId(null)}
                 onEdit={() => setEditing(openP)} onUpdate={onUpdate}
                 onDelete={async (id) => { await onDelete(id); setOpenId(null); }} onViewCompany={onViewCompany}
-                prijedlozi={kontaktPrijedlozi.filter((x) => x.status === "Na čekanju" && x.firma_key === companyKey(openP.naziv_firme))}
+                prijedlozi={kontaktPrijedlozi.filter((x) => (x.status === "Na čekanju" || x.status === "Obavijest") && x.firma_key === companyKey(openP.naziv_firme))}
                 onResolvePrijedlog={onResolvePrijedlog} odjave={mailingOdjave} onOdjava={onOdjava} onUkloniOdjavu={onUkloniOdjavu} />
             </aside>
           </>
