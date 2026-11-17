@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
+  Home, Target, Building2, Wrench, Bell, AlertTriangle, LogOut, LineChart, Lock, Sun, Moon, Minimize2, Maximize2,
   Calculator, Tags, ArrowUpCircle, Megaphone, Users, CalendarDays,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
@@ -12,7 +12,7 @@ import {
 } from "../lib/crm";
 import { idbGet, idbSet, idbRemove } from "../lib/idbCache";
 import {
-  PregledTab, LidoviTab, KupciTab, PodrskaTab, PodsjetniciTab,
+  PregledTab, KupciTab, PodrskaTab, PodsjetniciTab,
 } from "../components/tabs";
 import { PotencijaliTab } from "../components/potencijali";
 import { ForecastTab } from "../components/forecast";
@@ -32,7 +32,6 @@ const TABS = [
   { id: "pregled", label: "Pregled", icon: Home },
   { id: "forecast", label: "Forecast", icon: LineChart },
   { id: "potencijali", label: "Baza potencijala", icon: Target },
-  { id: "lidovi", label: "Lidovi", icon: TrendingUp },
   { id: "kalkulator", label: "Kalkulator zarade", icon: Calculator },
   { id: "cjenovnik", label: "Cjenovnik", icon: Tags },
   { id: "akcije", label: "Akcije", icon: Megaphone },
@@ -45,7 +44,7 @@ const TABS = [
 ];
 
 // Tabovi kojima tehničari nemaju pristup (vidljivi, ali "zaleđeni")
-const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "lidovi", "kalkulator", "cjenovnik", "akcije"];
+const TECH_RESTRICTED_TABS = ["forecast", "potencijali", "kalkulator", "cjenovnik", "akcije"];
 
 const CACHE_KEY = "crm_data_cache_v1";
 
@@ -68,7 +67,6 @@ export default function HomePage() {
   const [chartFilter, setChartFilter] = useState(null); // { tab: 'potencijali'|'kupci', value: string }
 
   const [potencijali, setPotencijali] = useState([]);
-  const [lidovi, setLidovi] = useState([]);
   const [kupci, setKupci] = useState([]);
   const [podrska, setPodrska] = useState([]);
   const [forecast, setForecast] = useState([]);
@@ -137,7 +135,6 @@ export default function HomePage() {
       const cached = await idbGet(CACHE_KEY);
       if (cached) {
         setPotencijali(cached.potencijali || []);
-        setLidovi(cached.lidovi || []);
         setKupci(cached.kupci || []);
         setPodrska(cached.podrska || []);
         setForecast(cached.forecast || []);
@@ -161,7 +158,6 @@ export default function HomePage() {
       }
       const all = await fetchAllData();
       setPotencijali(all.potencijali);
-      setLidovi(all.lidovi);
       setKupci(all.kupci);
       setPodrska(all.podrska);
       setForecast(all.forecast || []);
@@ -186,8 +182,8 @@ export default function HomePage() {
   // Automatski ažuriraj lokalni keš pri svakoj promjeni podataka (dodavanje/izmjena/brisanje/uvoz)
   useEffect(() => {
     if (!dataReady) return;
-    idbSet(CACHE_KEY, { potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti });
-  }, [dataReady, potencijali, lidovi, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti]);
+    idbSet(CACHE_KEY, { potencijali, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti });
+  }, [dataReady, potencijali, kupci, podrska, forecast, cjenovnik, kalkulacije, nadKampanje, nadLicence, nadFirme, akcije, akcijeFirme, kontaktPrijedlozi, mailingOdjave, mailingFilteri, mailingIzvozi, kalendar, kupciKontakti]);
 
   // Nadogradnje: model (licence s aktivnim održavanjem + stanje iz baze) — za tab, meni, Kupce i 360°
   const nadAkt = aktuelnaKampanja(nadKampanje);
@@ -338,92 +334,6 @@ export default function HomePage() {
     );
   };
 
-  /* ---------------- Lidovi handlers ---------------- */
-  const addLead = async (payload) => {
-    try {
-      const rec = await insertRow("lidovi", payload);
-      setLidovi((prev) => [rec, ...prev]);
-      showToast("Lead sačuvan");
-    } catch (e) {
-      showToast("Greška pri čuvanju leada", "error");
-      throw e;
-    }
-  };
-  const updateLead = async (id, patch) => {
-    try {
-      const rec = await updateRow("lidovi", id, patch);
-      setLidovi((prev) => prev.map((l) => (l.id === id ? rec : l)));
-      showToast("Lead sačuvan");
-    } catch (e) {
-      showToast("Greška pri čuvanju leada", "error");
-      throw e;
-    }
-  };
-  const deleteLead = (id) => {
-    const item = lidovi.find((l) => l.id === id);
-    if (!item) return;
-    setLidovi((prev) => prev.filter((l) => l.id !== id));
-    scheduleUndoDelete(
-      item.naziv_firme || "lead",
-      () => setLidovi((prev) => [item, ...prev]),
-      () => deleteRow("lidovi", id)
-    );
-  };
-  const bulkImportLidovi = async (rows) => {
-    try {
-      const inserted = await bulkInsert("lidovi", rows);
-      setLidovi((prev) => [...inserted, ...prev]);
-      showToast(`Uvezeno ${inserted.length} lidova`);
-    } catch (e) {
-      showToast("Greška pri uvozu lidova", "error");
-      throw e;
-    }
-  };
-  const bulkUpdateLidovi = async (ids, patch) => {
-    try {
-      const updated = await bulkUpdateRows("lidovi", ids, patch);
-      const updatedMap = new Map(updated.map((u) => [u.id, u]));
-      setLidovi((prev) => prev.map((l) => (updatedMap.has(l.id) ? updatedMap.get(l.id) : l)));
-      showToast(`Izmijenjeno ${updated.length} lidova`);
-    } catch (e) {
-      showToast("Greška pri grupnoj izmjeni", "error");
-      throw e;
-    }
-  };
-  const bulkDeleteLidovi = (ids) => {
-    const items = lidovi.filter((l) => ids.includes(l.id));
-    if (items.length === 0) return;
-    setLidovi((prev) => prev.filter((l) => !ids.includes(l.id)));
-    scheduleUndoDelete(
-      `${items.length} lidova`,
-      () => setLidovi((prev) => [...items, ...prev]),
-      () => bulkDeleteRows("lidovi", ids)
-    );
-  };
-  const convertLead = async (lead) => {
-    try {
-      const novi = {
-        naziv_firme: lead.naziv_firme, grad: lead.grad, drzava: lead.drzava,
-        kontakt_osoba: lead.kontakt_osoba, telefon: lead.telefon, email: lead.email,
-        kolega: lead.kolega, status: "Novi kontakt",
-        napomena: (lead.napomena ? lead.napomena + " " : "") + `(konvertovano iz leada, izvor: ${lead.izvor || "n/a"})`,
-        podsjetnik_datum: null, podsjetnik_opis: "",
-        origin_lead_id: lead.id,
-        created_by: currentUser || lead.kolega, created_at: new Date().toISOString(),
-        updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
-      };
-      const recPot = await insertRow("potencijali", novi);
-      setPotencijali((prev) => [recPot, ...prev]);
-      const recLead = await updateRow("lidovi", lead.id, {
-        status: "Konvertovan", updated_by: currentUser || lead.kolega, updated_at: new Date().toISOString(),
-      });
-      setLidovi((prev) => prev.map((l) => (l.id === lead.id ? recLead : l)));
-      showToast(`${lead.naziv_firme} konvertovan u potencijal`);
-    } catch (e) {
-      showToast("Greška pri konverziji leada", "error");
-      throw e;
-    }
-  };
 
   /* ---------------- Kupci handlers ---------------- */
   const addKupac = async (payload) => {
@@ -580,13 +490,11 @@ export default function HomePage() {
       return;
     }
     try {
-      const table = item.tip === "Potencijal" ? "potencijali" : "lidovi";
-      const rec = await updateRow(table, item.id, {
+      const rec = await updateRow("potencijali", item.id, {
         podsjetnik_datum: null, podsjetnik_opis: "",
         updated_by: currentUser || item.kolega, updated_at: new Date().toISOString(),
       });
-      if (table === "potencijali") setPotencijali((prev) => prev.map((p) => (p.id === item.id ? rec : p)));
-      else setLidovi((prev) => prev.map((l) => (l.id === item.id ? rec : l)));
+      setPotencijali((prev) => prev.map((p) => (p.id === item.id ? rec : p)));
       showToast("Podsjetnik označen kao obavljen");
     } catch (e) {
       showToast("Greška pri ažuriranju podsjetnika", "error");
@@ -1132,10 +1040,8 @@ export default function HomePage() {
       return;
     }
     try {
-      const table = tip === "Potencijal" ? "potencijali" : "lidovi";
-      const rec = await updateRow(table, id, { ...patch, updated_by: currentUser || "—", updated_at: new Date().toISOString() });
-      if (table === "potencijali") setPotencijali((prev) => prev.map((p) => (p.id === id ? rec : p)));
-      else setLidovi((prev) => prev.map((l) => (l.id === id ? rec : l)));
+      const rec = await updateRow("potencijali", id, { ...patch, updated_by: currentUser || "—", updated_at: new Date().toISOString() });
+      setPotencijali((prev) => prev.map((p) => (p.id === id ? rec : p)));
       showToast(poruka || "Podsjetnik sačuvan");
     } catch (e) {
       showToast("Greška pri ažuriranju podsjetnika", "error");
@@ -1157,7 +1063,7 @@ export default function HomePage() {
   const tekuciMjesec = currentMonthStr();
   const navBadges = {
     podsjetnici: {
-      count: getReminders(potencijali, lidovi).filter((r) => r.datum && daysDiff(r.datum) <= 0).length
+      count: getReminders(potencijali).filter((r) => r.datum && daysDiff(r.datum) <= 0).length
         + akcijeFirme.filter((r) => r.podsjetnik_datum && daysDiff(String(r.podsjetnik_datum).slice(0, 10)) <= 0).length
         + (isTehnicar ? 0 : kontaktPrijedlozi.filter((p) => (p.status === "Na čekanju" || p.status === "Obavijest") && p.prodavac === currentUser).length),
       tone: "alert", hint: "za danas / kasni",
@@ -1183,10 +1089,6 @@ export default function HomePage() {
     kalendar: {
       count: vanUredaDanas(kalendar).size,
       tone: "muted", hint: "kolega danas van ureda",
-    },
-    lidovi: {
-      count: lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length,
-      tone: "muted", hint: "aktivnih lidova",
     },
     forecast: {
       count: forecast.filter((f) => f.mjesec === tekuciMjesec && !isForecastWon(f.status) && !isForecastLost(f.status)).length,
@@ -1227,7 +1129,6 @@ export default function HomePage() {
           </div>
           <GlobalSearch
             potencijali={potencijali}
-            lidovi={lidovi}
             kupci={kupci}
             podrska={podrska}
             forecast={forecast}
@@ -1278,7 +1179,6 @@ export default function HomePage() {
               {tab === "pregled" && (
                 <PregledTab
                   potencijali={potencijali}
-                  lidovi={lidovi}
                   kupci={kupci}
                   podrska={podrska}
                   forecast={forecast}
@@ -1308,21 +1208,6 @@ export default function HomePage() {
                   onViewCompany={setViewingCompany}
                   presetStatus={chartFilter && chartFilter.tab === "potencijali" ? chartFilter.value : null}
                   onPresetConsumed={() => setChartFilter(null)}
-                />
-              )}
-              {tab === "lidovi" && (
-                <LidoviTab
-                  data={lidovi}
-                  potencijali={potencijali}
-                  currentUser={currentUser}
-                  onAdd={addLead}
-                  onUpdate={updateLead}
-                  onDelete={deleteLead}
-                  onBulkImport={bulkImportLidovi}
-                  onConvert={convertLead}
-                  onBulkUpdate={bulkUpdateLidovi}
-                  onBulkDelete={bulkDeleteLidovi}
-                  onViewCompany={setViewingCompany}
                 />
               )}
               {tab === "kalkulator" && (
@@ -1453,7 +1338,6 @@ export default function HomePage() {
               {tab === "podsjetnici" && (
                 <PodsjetniciTab
                   potencijali={potencijali}
-                  lidovi={lidovi}
                   akcije={akcije}
                   akcijeFirme={akcijeFirme}
                   kontaktPrijedlozi={isTehnicar ? [] : kontaktPrijedlozi}
