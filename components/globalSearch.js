@@ -1,11 +1,10 @@
 "use client";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, X, Target, TrendingUp, Building2, Wrench, LineChart } from "lucide-react";
+import { Search, X, Target, Building2, Wrench, LineChart } from "lucide-react";
 import { fmtDate } from "../lib/crm";
 
 const CATS = [
   { key: "potencijali", label: "Baza potencijala", icon: Target, tab: "potencijali", restricted: true },
-  { key: "lidovi", label: "Lidovi", icon: TrendingUp, tab: "lidovi", restricted: true },
   { key: "kupci", label: "Kupci i licence", icon: Building2, tab: "kupci", restricted: false },
   { key: "podrska", label: "Tehnička podrška", icon: Wrench, tab: "podrska", restricted: false },
   { key: "forecast", label: "Forecast", icon: LineChart, tab: "forecast", restricted: true },
@@ -25,8 +24,6 @@ function subtitleOf(cat, item) {
   switch (cat) {
     case "potencijali":
       return [item.kontakt_osoba, item.status, item.kolega].filter(Boolean).join(" · ");
-    case "lidovi":
-      return [item.kontakt_osoba, item.status].filter(Boolean).join(" · ");
     case "kupci":
       return [item.naziv_proizvoda, item.grad].filter(Boolean).join(" · ");
     case "podrska":
@@ -41,13 +38,12 @@ function subtitleOf(cat, item) {
 // Ovim redoslijedom polja se pretražuje svaki tip zapisa
 const FIELDS_BY_CAT = {
   potencijali: (p) => [p.naziv_firme, p.kontakt_osoba, p.email, p.telefon, p.grad, p.djelatnost],
-  lidovi: (l) => [l.naziv_firme, l.kontakt_osoba, l.email, l.telefon, l.grad, l.izvor],
   kupci: (k) => [k.naziv_firme, k.adresa, k.grad, k.naziv_proizvoda, k.naziv_proizvoda_2, k.serijski_broj],
   podrska: (s) => [s.firma, s.tehnicar, s.opis],
   forecast: (f) => [f.kupac, f.prodavac, f.softver, f.napomena],
 };
 
-export function GlobalSearch({ potencijali, lidovi, kupci, podrska, forecast, isTehnicar, onSelectCompany, onNavigateTab }) {
+export function GlobalSearch({ potencijali, kupci, podrska, forecast, isTehnicar, onSelectCompany, onNavigateTab }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
@@ -66,7 +62,7 @@ export function GlobalSearch({ potencijali, lidovi, kupci, podrska, forecast, is
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const dataByCat = { potencijali, lidovi, kupci, podrska, forecast: forecast || [] };
+  const dataByCat = { potencijali, kupci, podrska, forecast: forecast || [] };
 
   const results = useMemo(() => {
     if (debounced.length < 2) return null;
@@ -79,7 +75,7 @@ export function GlobalSearch({ potencijali, lidovi, kupci, podrska, forecast, is
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debounced, potencijali, lidovi, kupci, podrska, forecast, isTehnicar]);
+  }, [debounced, potencijali, kupci, podrska, forecast, isTehnicar]);
 
   const totalCount = results ? Object.values(results).reduce((s, arr) => s + arr.length, 0) : 0;
 
