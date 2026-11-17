@@ -1,15 +1,15 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
-  Home, Target, TrendingUp, Building2, Wrench, Bell, Plus, Pencil,
+  Home, Target, Building2, Wrench, Bell, Plus, Pencil,
   ArrowRightCircle, Phone, Mail, MapPin, Calendar, User, AlertTriangle,
-  CheckCircle2, ChevronRight, ChevronLeft, Upload, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink, Square, CheckSquare,
-  ArrowRight, Trophy, Newspaper, List, LayoutGrid,
+  CheckCircle2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, X, Download, ExternalLink,
+  LayoutGrid,
   RefreshCw, MoreHorizontal, Clock, KeyRound, GraduationCap, MessageSquare, Bug,
   AlarmClock, History, Sun, Check, FileText, FlaskConical,
 } from "lucide-react";
 import {
-  COLLEAGUE_NAMES, PRODAJA_MARKETING_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, LEAD_STATUSI, STATUS_BOJE, EU_COUNTRIES,
+  COLLEAGUE_NAMES, SORTED_FOR_TECH, POTENCIJAL_STATUSI, STATUS_BOJE, EU_COUNTRIES,
   FORECAST_STATUSI, FORECAST_STATUS_HEX, currentMonthStr, fmtMonth, normForecastStatus,
   inputCls, btnPrimary, btnSecondary, btnGhostIcon,
   todayStr, fmtDate, licenseStatus, reminderUrgency, getReminders, daysDiff, parseDateFlexible, downloadCSV,
@@ -17,7 +17,7 @@ import {
   COLLEAGUES, companyKey, jeGlavnaLicenca, nazivLicence,
   PORODICE_LICENCI, porodicaLicence, SW_DODACI, swDodatak, vrstaLicence, oznakaVrsteFirme,
 } from "../lib/crm";
-import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, BulkActionBar, ForecastStatusBadge } from "./ui";
+import { Modal, Field, EmptyState, Toolbar, SearchBox, MetaLine, ImportModal, ConfirmDelete, DangerConfirmModal, ForecastStatusBadge } from "./ui";
 import { PrijedlogKartica } from "./kontakti";
 import { Avatar, StatusPill, FilterPill, PanelLabel, SortHead, PageNav, daysAgo, relDate, fmtN, headerBtnSec } from "./crmBits";
 import { NadogradnjaBadge } from "./nadogradnje";
@@ -113,11 +113,10 @@ function StatusTick({ x, y, payload, fill }) {
 const panelCls = "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 transition-shadow duration-150 hover:shadow-md dark:hover:shadow-black/30";
 const panelTitleCls = "text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2";
 
-export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kalendar = [], setTab, theme, onLicenseClick, currentUser }) {
-  const podsjetnici = getReminders(potencijali, lidovi).filter((r) => daysDiff(r.datum) <= 7);
+export function PregledTab({ potencijali, kupci, podrska, forecast, kalendar = [], setTab, theme, onLicenseClick, currentUser }) {
+  const podsjetnici = getReminders(potencijali).filter((r) => daysDiff(r.datum) <= 7);
   // samo glavne licence (bez "with …" komponenti i uloga 3DEXPERIENCE) koje ističu u narednih 30 dana
   const isticuLicence = kupci.filter((k) => jeGlavnaLicenca(k) && vrstaLicence(k) === "Komercijalna" && k.end_date && daysDiff(k.end_date) >= 0 && daysDiff(k.end_date) <= 30).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
-  const aktivniLidovi = lidovi.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
   const otvoreniPotencijali = potencijali.filter((p) => p.status !== "Dobijen" && p.status !== "Izgubljen").length;
 
   const normFirma = (name) => (name || "").trim().toLowerCase();
@@ -127,8 +126,6 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
   /* ---- Trendovi (u odnosu na prije 30 dana) ---- */
   const potNovi30 = countCreatedBetween(potencijali, 30, 0);
   const potNoviPrije = countCreatedBetween(potencijali, 60, 30);
-  const lidNovi30 = countCreatedBetween(lidovi, 30, 0);
-  const lidNoviPrije = countCreatedBetween(lidovi, 60, 30);
   // Kupci prije 30 dana = firme koje su tada već imale licencu (start date stariji od 30 dana ili nepoznat)
   const kupciPrije30 = new Set(
     kupci.filter((k) => !k.start_date || daysDiff(k.start_date) <= -30).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
@@ -138,17 +135,6 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
     kupci.filter((k) => jeGlavnaLicenca(k) && vrstaLicence(k) === "Komercijalna" && k.end_date && daysDiff(k.end_date) >= -30 && daysDiff(k.end_date) <= 0).map((k) => normFirma(k.naziv_firme)).filter(Boolean)
   ).size;
 
-  const ukupnoLidova = lidovi.length;
-  const konvertovanoLidova = lidovi.filter((l) => l.status === "Konvertovan").length;
-  const potencijaliIzLeada = potencijali.filter((p) => p.origin_lead_id);
-  // Lead je "postao kupac" ako je njegov povezani potencijal Dobijen ILI je na samom leadu označeno "Postao kupac"
-  // (npr. uvezeni lidovi koji nisu konvertovani kroz CRM pa nemaju povezan potencijal)
-  const dobijeniLeadIds = new Set(potencijaliIzLeada.filter((p) => p.status === "Dobijen").map((p) => p.origin_lead_id));
-  lidovi.forEach((l) => { if (l.postao_kupac) dobijeniLeadIds.add(l.id); });
-  const dobijenoIzLeada = dobijeniLeadIds.size;
-  const izgubljenoIzLeada = potencijaliIzLeada.filter((p) => p.status === "Izgubljen").length;
-  const stopaKonverzije = ukupnoLidova > 0 ? Math.round((konvertovanoLidova / ukupnoLidova) * 100) : 0;
-  const stopaDobijanja = konvertovanoLidova > 0 ? Math.round((dobijenoIzLeada / konvertovanoLidova) * 100) : 0;
 
   const tekuciMjesec = currentMonthStr();
   const forecastOvogMjeseca = (forecast || []).filter((f) => f.mjesec === tekuciMjesec);
@@ -231,17 +217,13 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
       ],
     };
   } else if (odjel === "Marketing") {
-    const noviLidovi = lidovi.filter((l) => l.created_at && String(l.created_at).slice(0, 7) === tekuciMjesec).length;
-    const recenica =
-      noviLidovi === 0
-        ? "Ovog mjeseca još nije stigao nijedan novi lid."
-        : plural(noviLidovi, `Ovog mjeseca je stigao ${noviLidovi} novi lid.`, `Ovog mjeseca su stigla ${noviLidovi} nova lida.`, `Ovog mjeseca je stiglo ${noviLidovi} novih lidova.`);
+    const noviPotencijali = potencijali.filter((p) => p.created_at && String(p.created_at).slice(0, 7) === tekuciMjesec).length;
     baner = {
-      recenica,
-      onRecenica: () => setTab("lidovi"),
+      recenica: recenicaIstek,
+      onRecenica: () => setTab("kupci"),
       brojevi: [
-        { value: noviLidovi, label: "Novi lidovi ovog mj.", onClick: () => setTab("lidovi") },
-        { value: `${stopaKonverzije}%`, label: "Konverzija lidova", onClick: () => setTab("lidovi") },
+        { value: noviPotencijali, label: "Novi potencijali ovog mj.", onClick: () => setTab("potencijali") },
+        { value: otvoreniPotencijali, label: "Otvoreni potencijali", onClick: () => setTab("potencijali") },
       ],
     };
   }
@@ -282,20 +264,13 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
 
       <VanUredaTraka unosi={kalendar} onOpen={() => setTab("kalendar")} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           icon={Target} label="Otvoreni potencijali" value={otvoreniPotencijali}
           accent="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" onClick={() => setTab("potencijali")}
           trend={pctChange(potNovi30, potNoviPrije)}
           trendTitle={`Novih u zadnjih 30 dana: ${potNovi30} (prethodnih 30 dana: ${potNoviPrije})`}
           caption={`${potNovi30} novih u 30 dana`}
-        />
-        <StatCard
-          icon={TrendingUp} label="Aktivni lidovi" value={aktivniLidovi}
-          accent="bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" onClick={() => setTab("lidovi")}
-          trend={pctChange(lidNovi30, lidNoviPrije)}
-          trendTitle={`Novih u zadnjih 30 dana: ${lidNovi30} (prethodnih 30 dana: ${lidNoviPrije})`}
-          caption={`${lidNovi30} novih u 30 dana`}
         />
         <StatCard
           icon={Building2} label="Kupci" value={brojUnikatnihKupaca}
@@ -311,37 +286,6 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
           trendTitle={`Prije 30 dana: ${istekPrije30} firmi`}
           caption="u odnosu na prije 30 dana"
         />
-      </div>
-
-      <div className={panelCls}>
-        <h3 className={panelTitleCls + " mb-4"}>
-          <TrendingUp size={16} className="text-slate-400 dark:text-slate-500" /> Konverzija lidova
-        </h3>
-        <div className="flex flex-col sm:flex-row items-stretch gap-3">
-          <div className="flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 p-4 text-center">
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{ukupnoLidova}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ukupno lidova</div>
-          </div>
-          <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
-            <ChevronRight size={20} />
-          </div>
-          <div className="flex-1 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50 p-4 text-center">
-            <div className="text-2xl font-bold text-violet-700 dark:text-violet-400">{konvertovanoLidova}</div>
-            <div className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">Konvertovano u potencijal {ukupnoLidova > 0 && `(${stopaKonverzije}%)`}</div>
-          </div>
-          <div className="flex items-center justify-center text-slate-300 dark:text-slate-600 sm:rotate-0 rotate-90">
-            <ChevronRight size={20} />
-          </div>
-          <div className="flex-1 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/50 p-4 text-center">
-            <div className="text-2xl font-bold text-green-700 dark:text-green-400">{dobijenoIzLeada}</div>
-            <div className="text-xs text-green-600 dark:text-green-400 mt-0.5">Postalo kupac {konvertovanoLidova > 0 && `(${stopaDobijanja}%)`}</div>
-          </div>
-        </div>
-        {izgubljenoIzLeada > 0 && (
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
-            Od konvertovanih, {izgubljenoIzLeada} {izgubljenoIzLeada === 1 ? "je označen" : "je označeno"} kao izgubljeno, ostalo je još u toku.
-          </p>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -518,575 +462,10 @@ export function PregledTab({ potencijali, lidovi, kupci, podrska, forecast, kale
 /*  POTENCIJALI                                                            */
 /* ====================================================================== */
 
-function CountrySelect({ value, onChange }) {
-  const options = value && !EU_COUNTRIES.includes(value) ? [value, ...EU_COUNTRIES] : EU_COUNTRIES;
-  return (
-    <select className={inputCls} value={value || ""} onChange={onChange}>
-      <option value="">— odaberi državu —</option>
-      {options.map((c) => <option key={c}>{c}</option>)}
-    </select>
-  );
-}
-
-function normNaziv(s) {
-  return (s || "").toLowerCase().replace(/[^a-z0-9čćžšđ]/gi, "");
-}
-
 // PotencijalForm i PotencijaliTab su premješteni u components/potencijali.js
 
-/* ====================================================================== */
-/*  LIDOVI                                                                  */
-/* ====================================================================== */
-
-function LeadForm({ initial, currentUser, existingList, onSave, onClose }) {
-  const [f, setF] = useState(
-    initial || {
-      naziv_firme: "", grad: "", drzava: "", kontakt_osoba: "", telefon: "", email: "",
-      izvor: "", kolega: PRODAJA_MARKETING_NAMES.includes(currentUser) ? currentUser : "", status: "Novi", napomena: "",
-      podsjetnik_datum: "", podsjetnik_opis: "", postao_kupac: false,
-    }
-  );
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-
-  const duplicateMatch = useMemo(() => {
-    const target = normNaziv(f.naziv_firme);
-    if (target.length < 3) return null;
-    return (
-      (existingList || []).find((l) => {
-        if (initial && l.id === initial.id) return false;
-        const ln = normNaziv(l.naziv_firme);
-        if (!ln) return false;
-        return ln === target || ln.includes(target) || target.includes(ln);
-      }) || null
-    );
-  }, [f.naziv_firme, existingList, initial]);
-  const submit = async () => {
-    if (!f.naziv_firme.trim() || !f.kolega || !currentUser) return;
-    setBusy(true);
-    try {
-      const payload = { ...f, podsjetnik_datum: f.podsjetnik_datum || null, updated_by: currentUser, updated_at: new Date().toISOString() };
-      if (!initial) {
-        payload.created_by = currentUser;
-        payload.created_at = new Date().toISOString();
-      }
-      await onSave(payload);
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Modal title={initial ? "Uredi lead" : "Novi lead"} onClose={onClose} wide>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-        <Field label="Naziv firme" required><input className={inputCls} value={f.naziv_firme} onChange={set("naziv_firme")} /></Field>
-        <Field label="Kolega" required>
-          <select className={inputCls} value={f.kolega} onChange={set("kolega")}>
-            <option value="">— odaberi —</option>
-            {PRODAJA_MARKETING_NAMES.map((n) => <option key={n}>{n}</option>)}
-            {f.kolega && !PRODAJA_MARKETING_NAMES.includes(f.kolega) && <option key={f.kolega}>{f.kolega}</option>}
-          </select>
-        </Field>
-        <Field label="Grad"><input className={inputCls} value={f.grad || ""} onChange={set("grad")} /></Field>
-        <Field label="Država"><CountrySelect value={f.drzava} onChange={set("drzava")} /></Field>
-        <Field label="Kontakt osoba"><input className={inputCls} value={f.kontakt_osoba || ""} onChange={set("kontakt_osoba")} /></Field>
-        <Field label="Izvor leada" hint="npr. web forma, sajam, preporuka..."><input className={inputCls} value={f.izvor || ""} onChange={set("izvor")} /></Field>
-        <Field label="Telefon"><input className={inputCls} value={f.telefon || ""} onChange={set("telefon")} /></Field>
-        <Field label="Email"><input className={inputCls} value={f.email || ""} onChange={set("email")} /></Field>
-        <Field label="Status">
-          <select className={inputCls} value={f.status} onChange={set("status")}>
-            {LEAD_STATUSI.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </Field>
-        <Field label="Ishod">
-          <label className="flex items-center gap-2 h-[38px] text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-              checked={!!f.postao_kupac}
-              onChange={(e) => setF({ ...f, postao_kupac: e.target.checked })}
-            />
-            Postao kupac
-          </label>
-        </Field>
-      </div>
-      {duplicateMatch && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 flex items-start gap-1.5">
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          Moguć duplikat — već postoji lead <strong className="mx-1">{duplicateMatch.naziv_firme}</strong> (kolega: {duplicateMatch.kolega || "—"}, status: {duplicateMatch.status}).
-        </p>
-      )}
-      <Field label="Napomena"><textarea className={inputCls} rows={3} value={f.napomena || ""} onChange={set("napomena")} /></Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-        <Field label="Podsjetnik — datum"><input type="date" className={inputCls} value={f.podsjetnik_datum || ""} onChange={set("podsjetnik_datum")} /></Field>
-        <Field label="Podsjetnik — opis"><input className={inputCls} placeholder="npr. poziv, sastanak..." value={f.podsjetnik_opis || ""} onChange={set("podsjetnik_opis")} /></Field>
-      </div>
-      <div className="flex justify-end gap-2 mt-2">
-        <button className={btnSecondary} onClick={onClose}>Otkaži</button>
-        <button className={btnPrimary} onClick={submit} disabled={!f.naziv_firme.trim() || !f.kolega || !currentUser || busy}>
-          {busy ? "Čuvam..." : "Sačuvaj"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 const MJESECI = ["Januar", "Februar", "Mart", "April", "Maj", "Juni", "Juli", "August", "Septembar", "Oktobar", "Novembar", "Decembar"];
-const L_SVI_IZVORI = "Svi izvori";
-const L_BEZ_IZVORA = "(bez izvora)";
-const L_SVE_KOLEGE = "Sve kolege";
-const L_BILO_KADA = "Bilo kada";
-const L_PERIODI = [L_BILO_KADA, "Ovaj mjesec", "Zadnjih 30 dana", "Zadnjih 90 dana", "Ova godina"];
-const leadDatum = (l) => String(l.created_at || "").slice(0, 10);
 const kratkiDatum = (d) => (d ? `${Number(d.slice(8, 10))}.${Number(d.slice(5, 7))}.` : "");
-
-function periodOk(l, period) {
-  if (period === L_BILO_KADA) return true;
-  const d = leadDatum(l);
-  if (!d) return false;
-  const now = new Date();
-  if (period === "Ovaj mjesec") return d.slice(0, 7) === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  if (period === "Ova godina") return d.slice(0, 4) === String(now.getFullYear());
-  const n = daysAgo(d);
-  if (n == null) return false;
-  return period === "Zadnjih 30 dana" ? n <= 30 : n <= 90;
-}
-
-function KupacBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full whitespace-nowrap">
-      <Trophy size={12} /> Postao kupac
-    </span>
-  );
-}
-
-function LidKpi({ label, value, sub, cls }) {
-  return (
-    <div className={"flex-1 min-w-[140px] rounded-2xl border px-4 py-3.5 " + cls}>
-      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-2xl sm:text-[28px] font-bold tracking-tight leading-tight mt-0.5">{fmtN(value)}</div>
-      <div className="text-xs text-slate-500 dark:text-slate-400">{sub}</div>
-    </div>
-  );
-}
-
-export function LidoviTab({ data, potencijali = [], currentUser, onAdd, onUpdate, onDelete, onBulkImport, onConvert, onBulkUpdate, onBulkDelete, onViewCompany }) {
-  const [q, setQ] = useState("");
-  const [fStatus, setFStatus] = useState("Svi");
-  const [fIzvor, setFIzvor] = useState(L_SVI_IZVORI);
-  const [fKolega, setFKolega] = useState(L_SVE_KOLEGE);
-  const [fPeriod, setFPeriod] = useState(L_BILO_KADA);
-  const [prikaz, setPrikaz] = useState("lista");
-  const [limit, setLimit] = useState(100);
-  const [editing, setEditing] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [selected, setSelected] = useState(new Set());
-  const [bulkStatus, setBulkStatus] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
-
-  useEffect(() => { setLimit(100); }, [q, fStatus, fIzvor, fKolega, fPeriod]);
-
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  // Isto pravilo kao u Pregledu: povezani potencijal je Dobijen ILI je lead označen "Postao kupac"
-  const kupacIds = useMemo(() => {
-    const s = new Set(potencijali.filter((p) => p.origin_lead_id && p.status === "Dobijen").map((p) => p.origin_lead_id));
-    data.forEach((l) => { if (l.postao_kupac) s.add(l.id); });
-    return s;
-  }, [potencijali, data]);
-  const isKupac = (l) => kupacIds.has(l.id);
-
-  const izvorOf = (l) => (l.izvor || "").trim() || L_BEZ_IZVORA;
-  const izvori = useMemo(() => [...new Set(data.map(izvorOf))].sort((a, b) => a.localeCompare(b, "hr")), [data]);
-
-  const qMatch = (l) => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return true;
-    return [l.naziv_firme, l.grad, l.kontakt_osoba, l.email, l.telefon, l.napomena].join(" ").toLowerCase().includes(qq);
-  };
-  const passes = (l, skip = {}) =>
-    qMatch(l) &&
-    (skip.izvor || fIzvor === L_SVI_IZVORI || izvorOf(l) === fIzvor) &&
-    (skip.kolega || fKolega === L_SVE_KOLEGE || l.kolega === fKolega) &&
-    periodOk(l, fPeriod);
-
-  // osnova za brojke: svi filteri osim statusa
-  const base = useMemo(() => data.filter((l) => passes(l)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, q, fIzvor, fKolega, fPeriod]);
-  const statusCount = (s) => (s === "Svi" ? base.length : base.filter((l) => l.status === s).length);
-
-  const filtered = useMemo(() => base
-    .filter((l) => fStatus === "Svi" || l.status === fStatus)
-    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))),
-  [base, fStatus]);
-
-  const tot = base.length;
-  const konv = base.filter((l) => l.status === "Konvertovan").length;
-  const kup = base.filter(isKupac).length;
-  const otv = base.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length;
-  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
-  const filtriran = q || fIzvor !== L_SVI_IZVORI || fKolega !== L_SVE_KOLEGE || fPeriod !== L_BILO_KADA;
-
-  // po kolegi (ne gleda filter kolege) i po izvoru (ne gleda filter izvora)
-  const poKolegi = useMemo(() => {
-    const m = new Map();
-    data.filter((l) => passes(l, { kolega: true })).forEach((l) => {
-      const k = l.kolega || "—";
-      const e = m.get(k) || { n: 0, kup: 0 };
-      e.n++; if (isKupac(l)) e.kup++;
-      m.set(k, e);
-    });
-    return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, q, fIzvor, fPeriod, kupacIds]);
-  const poIzvoru = useMemo(() => {
-    const m = new Map();
-    data.filter((l) => passes(l, { izvor: true })).forEach((l) => {
-      const k = izvorOf(l);
-      const e = m.get(k) || { n: 0, kup: 0 };
-      e.n++; if (isKupac(l)) e.kup++;
-      m.set(k, e);
-    });
-    return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, q, fKolega, fPeriod, kupacIds]);
-  const maxKol = poKolegi.length ? poKolegi[0][1].n : 1;
-
-  const handleSave = async (payload) => {
-    if (editing) await onUpdate(editing.id, payload);
-    else await onAdd(payload);
-  };
-
-  const exportCSV = () => {
-    const headers = [
-      "Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor",
-      "Kolega", "Status", "Postao kupac", "Napomena", "Podsjetnik datum", "Podsjetnik opis",
-      "Kreirao", "Datum kreiranja", "Zadnja izmjena od", "Datum zadnje izmjene",
-    ];
-    const rows = filtered.map((l) => [
-      l.naziv_firme, l.grad, l.drzava, l.kontakt_osoba, l.telefon, l.email, l.izvor,
-      l.kolega, l.status, isKupac(l) ? "DA" : "NE", l.napomena, l.podsjetnik_datum, l.podsjetnik_opis,
-      l.created_by, l.created_at, l.updated_by, l.updated_at,
-    ]);
-    downloadCSV(`lidovi_${todayStr()}.csv`, headers, rows);
-  };
-
-  // grupisanje liste po mjesecu
-  const shown = filtered.slice(0, limit);
-  const grupe = [];
-  for (const l of shown) {
-    const d = leadDatum(l);
-    const key = d ? d.slice(0, 7) : "bez";
-    let g = grupe[grupe.length - 1];
-    if (!g || g.key !== key) {
-      g = { key, label: d ? `${MJESECI[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "Bez datuma", items: [] };
-      grupe.push(g);
-    }
-    g.items.push(l);
-  }
-  const grupaCount = (key) => filtered.filter((l) => (leadDatum(l) ? leadDatum(l).slice(0, 7) : "bez") === key).length;
-
-  const canConvert = (l) => l.status !== "Konvertovan" && l.status !== "Odbačen";
-  const convertBtn = (l) => (
-    <button type="button" disabled={!currentUser} onClick={(e) => { e.stopPropagation(); onConvert(l); }}
-      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-semibold whitespace-nowrap hover:bg-teal-100 dark:hover:bg-teal-900/50 disabled:opacity-50">
-      Konvertuj <ArrowRight size={13} />
-    </button>
-  );
-
-  const prikazBtn = (id, Icon, label) => (
-    <button type="button" aria-label={label} title={label} onClick={() => setPrikaz(id)}
-      className={"w-9 h-8 inline-flex items-center justify-center " + (prikaz === id ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}>
-      <Icon size={15} />
-    </button>
-  );
-
-  return (
-    <div>
-      {/* ---------- zaglavlje ---------- */}
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Lidovi</h2>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
-            {fmtN(data.length)} lidova · {fmtN(data.filter((l) => l.status !== "Konvertovan" && l.status !== "Odbačen").length)} čeka konverziju
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className={headerBtnSec} onClick={() => setShowImport(true)}><Upload size={15} /> Uvoz</button>
-          <button type="button" className={headerBtnSec} onClick={exportCSV}><Download size={15} /> Izvoz</button>
-          <button type="button" className={btnPrimary + " h-9"} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Novi lead</button>
-        </div>
-      </div>
-
-      {/* ---------- lijevak ---------- */}
-      <div className="flex flex-wrap items-stretch gap-2 sm:gap-2.5 mb-4">
-        <LidKpi label={filtriran ? "Lidova (filtrirano)" : "Ukupno lidova"} value={tot} sub="svi izvori" cls="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100" />
-        <div className="hidden sm:flex items-center text-slate-300 dark:text-slate-600"><ChevronRight size={20} /></div>
-        <LidKpi label="Konvertovano u potencijal" value={konv} sub={`${pct(konv, tot)}% lidova`} cls="bg-violet-50/70 dark:bg-violet-900/20 border-violet-100 dark:border-violet-900/50 text-violet-700 dark:text-violet-300" />
-        <div className="hidden sm:flex items-center text-slate-300 dark:text-slate-600"><ChevronRight size={20} /></div>
-        <LidKpi label="Postalo kupac" value={kup} sub={`${pct(kup, konv)}% konvertovanih`} cls="bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300" />
-        <div className="hidden sm:block w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-        <LidKpi label="Čeka konverziju" value={otv} sub="još nije potencijal" cls="bg-amber-50/70 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50 text-amber-700 dark:text-amber-300" />
-      </div>
-
-      {selected.size > 0 && (
-        <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())}>
-          <select className="text-sm rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-white" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
-            <option value="" className="text-slate-800">— odaberi status —</option>
-            {LEAD_STATUSI.map((s) => <option key={s} className="text-slate-800">{s}</option>)}
-          </select>
-          <button
-            className="text-sm bg-white text-teal-700 rounded-lg px-3 py-1.5 font-medium hover:bg-teal-50 active:scale-95 transition-transform disabled:opacity-50"
-            disabled={!bulkStatus || bulkBusy}
-            onClick={async () => {
-              setBulkBusy(true);
-              try {
-                await onBulkUpdate(Array.from(selected), { status: bulkStatus, updated_by: currentUser || "Grupna izmjena", updated_at: new Date().toISOString() });
-                setSelected(new Set());
-                setBulkStatus("");
-              } finally {
-                setBulkBusy(false);
-              }
-            }}
-          >
-            Promijeni status
-          </button>
-          <button
-            className="text-sm bg-red-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-red-600 active:scale-95 transition-transform disabled:opacity-50"
-            disabled={bulkBusy}
-            onClick={async () => {
-              if (!window.confirm(`Obrisati ${selected.size} odabranih lidova?`)) return;
-              setBulkBusy(true);
-              try {
-                await onBulkDelete(Array.from(selected));
-                setSelected(new Set());
-              } finally {
-                setBulkBusy(false);
-              }
-            }}
-          >
-            Obriši odabrane
-          </button>
-        </BulkActionBar>
-      )}
-
-      <div className="xl:flex xl:items-start xl:gap-4">
-        <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
-          {/* statusi */}
-          <div className="flex items-center gap-4 px-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="flex items-center gap-4 overflow-x-auto -mb-px">
-              {["Svi", ...LEAD_STATUSI].map((s) => {
-                const on = fStatus === s;
-                return (
-                  <button key={s} type="button" onClick={() => setFStatus(s)}
-                    className={"h-11 inline-flex items-center gap-1.5 border-b-2 text-[13.5px] whitespace-nowrap transition-colors " +
-                      (on ? "border-teal-600 text-teal-700 dark:text-teal-400 font-semibold" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200")}>
-                    {s}
-                    <span className={"text-[11px] px-1.5 rounded-full " + (on ? "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400")}>{statusCount(s)}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="ml-auto hidden sm:flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
-              {prikazBtn("lista", List, "Prikaz: lista")}
-              {prikazBtn("ploca", LayoutGrid, "Prikaz: ploča po statusu")}
-            </div>
-          </div>
-
-          {/* filteri */}
-          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-            <div className="w-full sm:w-72 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, grad..." /></div>
-            <FilterPill label="Izvor" value={fIzvor} defaultValue={L_SVI_IZVORI} onChange={setFIzvor} options={[L_SVI_IZVORI, ...izvori]} />
-            <FilterPill label="Kolega" value={fKolega} defaultValue={L_SVE_KOLEGE} onChange={setFKolega} options={[L_SVE_KOLEGE, ...COLLEAGUE_NAMES]} />
-            <FilterPill label="Period" value={fPeriod} defaultValue={L_BILO_KADA} onChange={setFPeriod} options={L_PERIODI} />
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="px-4 pb-4">
-              <EmptyState icon={TrendingUp} title={data.length === 0 ? "Nema unesenih lidova" : "Nema lidova za odabrane filtere"}
-                subtitle={data.length === 0 ? "Dodaj ručno ili uvezi generisanu bazu lidova." : "Promijeni pretragu ili filtere."}
-                action={data.length === 0 ? <button className={btnPrimary} onClick={() => setShowNew(true)} disabled={!currentUser}><Plus size={15} /> Dodaj prvi lead</button> : null} />
-            </div>
-          ) : prikaz === "ploca" ? (
-            /* ---------- ploča po statusu ---------- */
-            <div className="px-4 pb-4 overflow-x-auto">
-              <div className="grid grid-cols-5 gap-3 min-w-[980px]">
-                {LEAD_STATUSI.map((s) => {
-                  const items = filtered.filter((l) => l.status === s);
-                  return (
-                    <div key={s} className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-2.5 flex flex-col gap-2 min-h-[120px]">
-                      <div className="flex items-center justify-between px-1">
-                        <StatusPill status={s} />
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{items.length}</span>
-                      </div>
-                      {items.slice(0, 60).map((l) => (
-                        <div key={l.id} onClick={() => setEditing(l)}
-                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 cursor-pointer hover:border-teal-300 dark:hover:border-teal-700 hover:shadow-sm transition-all">
-                          <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 leading-snug">{l.naziv_firme}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{[l.kontakt_osoba, l.grad].filter(Boolean).join(" · ") || l.email}</div>
-                          <div className="flex items-center justify-between gap-1.5 mt-2">
-                            <Avatar name={l.kolega} size="sm" />
-                            {isKupac(l) ? <KupacBadge /> : canConvert(l) ? convertBtn(l) : <span className="text-[11px] text-slate-400">{kratkiDatum(leadDatum(l))}</span>}
-                          </div>
-                        </div>
-                      ))}
-                      {items.length > 60 && <div className="text-center text-xs text-slate-400 py-1">+ {items.length - 60} više</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            /* ---------- lista po mjesecima ---------- */
-            <div className="pb-2">
-              {grupe.map((g) => (
-                <div key={g.key}>
-                  <div className="flex items-center gap-2.5 px-4 pt-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    {g.label}
-                    <span className="font-semibold text-slate-400 dark:text-slate-500 tracking-normal">{grupaCount(g.key)}</span>
-                    <span className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
-                  </div>
-                  {g.items.map((l) => (
-                    <div key={l.id} onClick={() => setEditing(l)}
-                      className="group grid grid-cols-[28px_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1.2fr)_128px_122px_30px_164px] gap-x-3 gap-y-1 items-center px-4 py-2.5 border-t border-slate-50 dark:border-slate-800/60 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                      <button type="button" onClick={(e) => { e.stopPropagation(); toggleSelect(l.id); }} className={btnGhostIcon} aria-label="Odaberi lead">
-                        {selected.has(l.id) ? <CheckSquare size={15} className="text-teal-600" /> : <Square size={15} className="text-slate-300 dark:text-slate-600" />}
-                      </button>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{l.naziv_firme}</span>
-                          {onViewCompany && (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); onViewCompany(l.naziv_firme); }}
-                              className="text-slate-300 dark:text-slate-600 hover:text-teal-600 dark:hover:text-teal-400 opacity-0 group-hover:opacity-100 shrink-0" aria-label="360° pregled firme" title="360° pregled firme">
-                              <ExternalLink size={12} />
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          {[l.kontakt_osoba, l.grad].filter(Boolean).join(" · ") || l.email || "—"}
-                          {l.izvor ? <span className="text-slate-400 dark:text-slate-500"> · {l.izvor}</span> : null}
-                        </div>
-                        {/* mobitel: status i ishod ispod naziva */}
-                        <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
-                          <StatusPill status={l.status} />{isKupac(l) && <KupacBadge />}
-                        </div>
-                      </div>
-                      <div className="hidden md:block text-[12.5px] text-slate-600 dark:text-slate-400 truncate" title={l.napomena || ""}>{l.napomena || ""}</div>
-                      <div className="hidden md:block"><StatusPill status={l.status} /></div>
-                      <div className="hidden md:block">{isKupac(l) && <KupacBadge />}</div>
-                      <div className="hidden md:block"><Avatar name={l.kolega} /></div>
-                      <div className="flex items-center justify-end gap-2">
-                        <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">{kratkiDatum(leadDatum(l))}</span>
-                        {canConvert(l) && convertBtn(l)}
-                        <span className="inline-flex items-center opacity-40 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-                          <ConfirmDelete label={l.naziv_firme} onConfirm={() => onDelete(l.id)} />
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-              {filtered.length > limit && (
-                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-center">
-                  <button type="button" className={btnSecondary} onClick={() => setLimit(limit + 100)}>
-                    Prikaži još ({fmtN(filtered.length - limit)} preostalo)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ---------- desna kolona ---------- */}
-        <div className="hidden xl:flex flex-col gap-4 w-[300px] shrink-0">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-            <PanelLabel right={fKolega !== L_SVE_KOLEGE && <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFKolega(L_SVE_KOLEGE)}>Svi</button>}>Po kolegi</PanelLabel>
-            <div className="flex flex-col gap-2.5 mt-1">
-              {poKolegi.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
-              {poKolegi.map(([k, v]) => (
-                <button key={k} type="button" onClick={() => setFKolega(fKolega === k ? L_SVE_KOLEGE : k)}
-                  className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1 " + (fKolega === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
-                  <Avatar name={k} size="sm" />
-                  <span className="flex-1 min-w-0">
-                    <span className="flex justify-between gap-2 text-[12.5px] text-slate-700 dark:text-slate-300">
-                      <span className="truncate">{k}</span>
-                      <span className="whitespace-nowrap"><b className="text-slate-900 dark:text-slate-100">{v.n}</b>{v.kup > 0 && <span className="text-emerald-700 dark:text-emerald-400"> · {v.kup} kup.</span>}</span>
-                    </span>
-                    <span className="block h-1.5 mt-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                      <span className="block h-full rounded-full bg-teal-500" style={{ width: `${Math.round((v.n / maxKol) * 100)}%` }} />
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-            <PanelLabel right={fIzvor !== L_SVI_IZVORI && <button type="button" className="text-xs text-teal-700 dark:text-teal-400 hover:underline" onClick={() => setFIzvor(L_SVI_IZVORI)}>Svi</button>}>Po izvoru</PanelLabel>
-            <div className="flex flex-col gap-1 mt-1">
-              {poIzvoru.length === 0 && <p className="text-xs text-slate-400">Nema podataka.</p>}
-              {poIzvoru.map(([k, v]) => (
-                <button key={k} type="button" onClick={() => setFIzvor(fIzvor === k ? L_SVI_IZVORI : k)}
-                  className={"flex items-center gap-2.5 text-left rounded-lg -mx-1.5 px-1.5 py-1.5 " + (fIzvor === k ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
-                  <span className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 inline-flex items-center justify-center shrink-0"><Newspaper size={15} /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">{k}</span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">{v.n} {v.n === 1 ? "lead" : "lidova"} · {v.kup} {v.kup === 1 ? "kupac" : "kupaca"}</span>
-                  </span>
-                  <b className="text-sm text-slate-900 dark:text-slate-100" title="Udio lidova koji su postali kupac">{pct(v.kup, v.n)}%</b>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {(showNew || editing) && (
-        <LeadForm initial={editing} currentUser={currentUser} existingList={data} onSave={handleSave}
-          onClose={() => { setShowNew(false); setEditing(null); }} />
-      )}
-
-      {showImport && (
-        <ImportModal
-          title="Uvezi bazu lidova"
-          columns={["Naziv firme", "Grad", "Država", "Kontakt osoba", "Telefon", "Email", "Izvor", "Kolega", "Status", "Napomena (nije obavezno)", "Datum leada (nije obavezno)", "Postao kupac DA/NE (nije obavezno)"]}
-          existingNames={data.map((l) => l.naziv_firme)}
-          onClose={() => setShowImport(false)}
-          onImport={async (rows) => {
-            // Datum leada: prihvata 2026-05-19 ili 19.5.2026.
-            const parseLeadDate = (s) => {
-              const t = String(s || "").trim();
-              let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (m) return `${m[1]}-${m[2]}-${m[3]}T09:00:00.000Z`;
-              m = t.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
-              if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}T09:00:00.000Z`;
-              return null;
-            };
-            const novi = rows.map((r) => ({
-              naziv_firme: r[0] || "", grad: r[1] || "", drzava: r[2] || "", kontakt_osoba: r[3] || "",
-              telefon: r[4] || "", email: r[5] || "", izvor: r[6] || "",
-              kolega: COLLEAGUE_NAMES.includes(r[7]) ? r[7] : currentUser || "",
-              status: LEAD_STATUSI.includes(r[8]) ? r[8] : "Novi",
-              napomena: r[9] || "", podsjetnik_datum: null, podsjetnik_opis: "",
-              postao_kupac: /^(da|yes|1|true)$/i.test(String(r[11] || "").trim()),
-              created_by: currentUser || "Uvoz", created_at: parseLeadDate(r[10]) || new Date().toISOString(),
-              updated_by: currentUser || "Uvoz", updated_at: new Date().toISOString(),
-            }));
-            await onBulkImport(novi);
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
 /* ====================================================================== */
 /*  ZAJEDNIČKO: KPI pločica, meni "više", firme                            */
@@ -2761,7 +2140,7 @@ function ZavrsiPanel({ item, currentUser, onCancel, onDone }) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-green-200 dark:border-green-900/60 rounded-xl p-3.5 flex flex-col gap-3">
       <div className="flex items-center gap-2 text-[11.5px] font-bold uppercase tracking-wider text-green-700 dark:text-green-400">
-        <History size={14} /> {item.tip === "Potencijal" ? "Zapiši u historiju firme" : item.tip === "Akcija" ? "Zapiši u akciju i historiju firme" : "Zapiši u napomenu leada"}
+        <History size={14} /> {item.tip === "Potencijal" ? "Zapiši u historiju firme" : item.tip === "Akcija" ? "Zapiši u akciju i historiju firme" : "Zapiši u historiju firme"}
       </div>
       <textarea className={inputCls} rows={2} value={biljeska} onChange={(e) => setBiljeska(e.target.value)} autoFocus
         placeholder="Šta je dogovoreno? (nije obavezno)" />
@@ -2789,7 +2168,7 @@ function ZavrsiPanel({ item, currentUser, onCancel, onDone }) {
   );
 }
 
-// ---------- novi podsjetnik (bilo koja firma iz Baze potencijala ili Lidova) ----------
+// ---------- novi podsjetnik (bilo koja firma iz Baze potencijala) ----------
 function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) {
   const [q, setQ] = useState("");
   const [odabran, setOdabran] = useState(pocetni || null);
@@ -2815,7 +2194,7 @@ function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) 
   };
   return (
     <Modal title="Novi podsjetnik" onClose={onClose}>
-      <Field label="Firma" required hint="Potencijal iz Baze potencijala ili lead">
+      <Field label="Firma" required hint="Firma iz Baze potencijala">
         {odabran ? (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/60 dark:bg-teal-900/20 px-3 py-2">
             <span className="min-w-0">
@@ -2870,7 +2249,7 @@ function NoviPodsjetnikModal({ zapisi, pocetni, currentUser, onSave, onClose }) 
   );
 }
 
-export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akcijeFirme = [], kontaktPrijedlozi = [], onResolvePrijedlog, currentUser, onClear, onPatch, onViewCompany, kalendar = [], onOpenKalendar }) {
+export function PodsjetniciTab({ potencijali = [], akcije = [], akcijeFirme = [], kontaktPrijedlozi = [], onResolvePrijedlog, currentUser, onClear, onPatch, onViewCompany, kalendar = [], onOpenKalendar }) {
   const [sviPrijedlozi, setSviPrijedlozi] = useState(false);
   const [mod, setMod] = useState(currentUser ? "moji" : "tim");
   const [fKolega, setFKolega] = useState("Svi");
@@ -2894,10 +2273,6 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
       key: "P" + p.id, tip: "Potencijal", rec: p, naziv: p.naziv_firme || "—", status: p.status, vlasnik: vlasnikPotencijala(p),
       kontakt: p.kontakt_osoba || "", telefon: p.telefon || "", email: p.email || "",
     })),
-    ...lidovi.filter((l) => l.status !== "Konvertovan" || l.podsjetnik_datum).map((l) => ({
-      key: "L" + l.id, tip: "Lead", rec: l, naziv: l.naziv_firme || "—", status: l.status, vlasnik: l.kolega || "Nedodijeljeno",
-      kontakt: l.kontakt_osoba || "", telefon: l.telefon || "", email: l.email || "",
-    })),
     // podsjetnici iz Akcija (firma u akciji) — kontakt se preuzima iz Baze potencijala
     ...(() => {
       const rows = akcijeFirme.filter((r) => r.podsjetnik_datum);
@@ -2913,7 +2288,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
         };
       });
     })(),
-  ], [potencijali, lidovi, akcije, akcijeFirme]);
+  ], [potencijali, akcije, akcijeFirme]);
   const svi = useMemo(() => zapisi
     .filter((z) => z.rec.podsjetnik_datum)
     .map((z) => ({ ...z, datum: String(z.rec.podsjetnik_datum).slice(0, 10), opis: z.rec.podsjetnik_opis || "" }))
@@ -2995,10 +2370,6 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
         const nova = [zapis, ...(r.rec.historija || [])];
         patch.historija = nova;
         patch.zadnji_kontakt = nova.reduce((m, h) => (h.datum && (!m || h.datum > m) ? h.datum : m), null);
-      } else {
-        const d = new Date();
-        const red = `[${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}. ${currentUser}] ${r.opis ? r.opis + ": " : ""}${biljeska}`;
-        patch.napomena = r.rec.napomena ? `${r.rec.napomena}\n${red}` : red;
       }
     }
     await onPatch(r.tip, r.rec.id, patch, sljedeci ? `Obavljeno · novi podsjetnik ${fmtDate(sljedeci)}` : "Podsjetnik obavljen");
@@ -3012,7 +2383,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
   // ---------- grupe ----------
   const grupe = P_SEKCIJE.map((k) => ({ key: k, items: lista.filter((r) => sekcijaPodsjetnika(r.datum) === k) })).filter((g) => g.items.length);
   const tipChip = (tip, akcija) => (
-    <span title={akcija ? `Akcija: ${akcija}` : undefined} className={"text-[11px] font-semibold px-1.5 py-px rounded-md max-w-[220px] truncate " + (tip === "Lead" ? "bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : tip === "Akcija" ? "bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{tip === "Akcija" && akcija ? `Akcija · ${akcija}` : tip}</span>
+    <span title={akcija ? `Akcija: ${akcija}` : undefined} className={"text-[11px] font-semibold px-1.5 py-px rounded-md max-w-[220px] truncate " + (tip === "Akcija" ? "bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{tip === "Akcija" && akcija ? `Akcija · ${akcija}` : tip}</span>
   );
   const filtriran = fTip !== "Svi" || fStatus !== "Svi" || fRok !== "Sve" || fDan || qq || (mod === "tim" && fKolega !== "Svi");
   const ocisti = () => { setFTip("Svi"); setFStatus("Svi"); setFRok("Sve"); setFDan(null); setQ(""); setFKolega("Svi"); };
@@ -3092,7 +2463,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
             </div>
             <div className="w-full sm:w-56 sm:flex-none"><SearchBox value={q} onChange={setQ} placeholder="Firma, kontakt, opis..." /></div>
             {mod === "tim" && <FilterPill label="Kolega" value={fKolega} defaultValue="Svi" onChange={setFKolega} options={["Svi", ...tim.map(([n]) => n)]} />}
-            <FilterPill label="Tip" value={fTip} defaultValue="Svi" onChange={setFTip} options={["Svi", "Potencijal", "Lead", ...(akcijeFirme.some((r) => r.podsjetnik_datum) ? ["Akcija"] : [])]} />
+            <FilterPill label="Tip" value={fTip} defaultValue="Svi" onChange={setFTip} options={["Svi", "Potencijal", ...(akcijeFirme.some((r) => r.podsjetnik_datum) ? ["Akcija"] : [])]} />
             <FilterPill label="Status" value={fStatus} defaultValue="Svi" onChange={setFStatus} options={["Svi", ...statusi]} />
             {fDan && (
               <span className="inline-flex items-center h-9 rounded-lg border border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-700 dark:bg-teal-900/30 dark:text-teal-200 text-[13px] pl-3">
@@ -3107,7 +2478,7 @@ export function PodsjetniciTab({ potencijali = [], lidovi = [], akcije = [], akc
             <div className="p-4">
               <EmptyState icon={Bell}
                 title={svi.length === 0 ? "Nema aktivnih podsjetnika" : base.length === 0 && mod === "moji" ? "Nemaš aktivnih podsjetnika" : "Nema podsjetnika za odabrane filtere"}
-                subtitle={svi.length === 0 ? "Podsjetnik dodaješ ovdje ili direktno na potencijalu ili leadu (poziv, sastanak, follow-up)." : mod === "moji" && base.length === 0 ? "Pogledaj podsjetnike cijelog tima ili dodaj novi." : "Promijeni pretragu ili filtere."}
+                subtitle={svi.length === 0 ? "Podsjetnik dodaješ ovdje ili direktno na potencijalu (poziv, sastanak, follow-up)." : mod === "moji" && base.length === 0 ? "Pogledaj podsjetnike cijelog tima ili dodaj novi." : "Promijeni pretragu ili filtere."}
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
                     {mod === "moji" && base.length === 0 && svi.length > 0 && <button className={btnSecondary} onClick={() => setMod("tim")}>Prikaži cijeli tim</button>}
